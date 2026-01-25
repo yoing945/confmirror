@@ -1,292 +1,291 @@
-# Git配置备份工具
+# **confmirror**  
+> **Configuration Mirror** —— 基于 Git 的声明式系统配置镜像与还原工具
 
-一个基于Python的系统配置备份与恢复工具，支持模块化配置、Git版本控制和脚本化备份。
+---
 
-## 功能特性
+## 目录
 
-- 🚀 **模块化管理**: 通过配置文件定义备份模块，灵活配置需要备份的路径
-- 📦 **Git版本控制**: 备份内容存储在Git仓库中，支持版本追踪和历史回退
-- 🔧 **脚本化备份**: 支持通过自定义脚本执行复杂备份逻辑
-- 📝 **详细日志**: 分级日志记录，支持日志轮转和详细输出
-- 🔐 **权限保持**: 完整保存和恢复文件权限、用户组等元数据
-- ⚡ **高性能**: 使用Python实现，支持并发处理和增量备份
-- 🌍 **环境配置**: 通过.env文件灵活配置各种参数
+- [1. 设计目标](#1-设计目标)
+- [2. 核心特性](#2-核心特性)
+- [3. 整体架构](#3-整体架构)
+- [4. 目录结构](#4-目录结构)
+  - [4.1 工具仓库（`confmirror/`）](#41-工具仓库-confmirror)
+  - [4.2 数据仓库（由 `.env` 指定）](#42-数据仓库由-env-指定)
+- [5. 功能详细设计](#5-功能详细设计)
+  - [5.1 配置文件 (`backup-rules.yaml`)](#51-配置文件-backup-rulesyaml)
+  - [5.2 备份流程](#52-备份流程)
+  - [5.3 还原流程](#53-还原流程)
+  - [5.4 脚本钩子机制](#54-脚本钩子机制)
+  - [5.5 元数据管理 (`.meta` 文件)](#55-元数据管理-meta-文件)
+  - [5.6 权限与安全](#56-权限与安全)
+  - [5.7 日志系统](#57-日志系统)
+- [6. 命令行接口 (CLI)](#6-命令行接口-cli)
+- [7. 使用示例](#7-使用示例)
+- [8. 与同类工具对比](#8-与同类工具对比)
+- [9. 未来扩展](#9-未来扩展)
 
-## 文件结构
+---
 
+## 1. 设计目标
+
+- **安全可靠**：完整保留文件权限、属主、类型，支持精确还原。
+- **声明式管理**：通过 YAML 配置文件定义备份规则，可版本化、可复用。
+- **Git 原生集成**：备份结果即 Git 仓库，天然支持历史追溯、差异对比、远程同步。
+- **轻量无侵入**：不修改原系统目录，仅在独立数据仓库中维护镜像。
+- **生产就绪**：支持交互确认、分级日志、错误恢复，避免误操作。
+
+---
+
+## 2. 核心特性
+
+| 特性 | 说明 |
+|------|------|
+| ✅ **1:1 目录镜像** | `mirror/etc/ssh/sshd_config` 与系统路径完全一致 |
+| ✅ **元数据持久化** | 自动保存 `mode/uid/gid/type` 到 `.meta` 文件 |
+| ✅ **YAML 配置驱动** | 声明式定义模块、路径、父路径、脚本钩子 |
+| ✅ **脚本钩子扩展** | 支持任意 shell/python 脚本处理复杂备份逻辑 |
+| ✅ **权限感知** | `backup` 无需 root，`restore` 强制提权 |
+| ✅ **日志轮转** | 自动保留最近 N 行日志，避免磁盘占满 |
+| ✅ **模块化操作** | 支持全量或按模块 (`mod`) 粒度备份/还原 |
+
+---
+
+## 3. 整体架构
+
+```text
++------------------+       +---------------------+
+|   confmirror     |       |   Data Repository   |
+|   (Tool Repo)    |<----->|  (Config Mirror)    |
++------------------+       +---------------------+
+        |                           |
+        | .env → MIRROR_ROOT        | mirror-rules.yaml
+        | CLI commands              | mirror/
+        |                           | script-hooks/
+        v                           v
+    User Interaction           Git Version Control
 ```
-.
-├── backup.py              # 备份脚本（无需sudo）
-├── restore.py             # 恢复脚本（需要sudo）
-├── .env.example           # 环境配置模板
-├── sync.conf              # 备份配置文件
-├── requirements.txt        # 依赖包列表
-├── backup/                # Git备份根目录
-├── backup-script/         # 备份脚本目录
-├── log-backup.log         # 日志文件
-└── README.md             # 说明文档
+
+- **工具仓库**：提供通用逻辑（`confmirror` 命令）
+- **数据仓库**：存储特定环境的配置镜像（每个服务器/环境一个）
+
+---
+
+## 4. 目录结构
+
+### 4.1 工具仓库（`confmirror/`）
+
+```text
+confmirror/                     # ← 工具仓库（代码）
+├── confmirror                  # ← 主入口（可执行脚本）
+├── src/
+│   ├── __init__.py
+│   ├── cli.py                  # CLI 解析
+│   ├── core.py                 # 公共函数（路径、日志、.env 加载）
+│   ├── backup.py               # 备份逻辑
+│   └── restore.py              # 还原逻辑
+├── logs/                       # ← 默认日志目录（可配置）
+├── .env                        # ← 指向数据仓库根目录
+├── .env.example
+├── README.md
+├── pyproject.toml              # ← 支持 pip install
+└── .gitignore
 ```
 
-## 快速开始
+### 4.2 数据仓库（由 `.env` 指定）
 
-### 1. 环境准备
+默认路径：`../confmirror-repository`（若未设置 `BACKUP_ROOT`）
+
+```text
+sync-mainserver-configs/        # ← 数据仓库（由 BACKUP_ROOT 指定）
+├── mirror-rules.yaml           # ← 镜像备份规则配置
+├── mirror/                     # ← 配置镜像（1:1 系统结构）
+│   └── etc/
+│       └── ssh/
+│           ├── sshd_config
+│           └── sshd_config.meta
+├── script-hooks/               # ← 脚本钩子目录
+│   └── ufw/
+│       └── script.sh           # ← 被 mirror-rules.yaml 引用
+└── .gitignore
+```
+
+> 💡 **关键约定**：
+> - 所有备份内容存于 `mirror/`
+> - 所有脚本钩子存于 `script-hooks/<mod>/script.sh`
+> - 配置文件必须命名为 `mirror-rules.yaml`
+
+---
+
+## 5. 功能详细设计
+
+### 5.1 配置文件 (`mirror-rules.yaml`)
+
+采用 **YAML 格式**，支持注释、灵活缩进。
+
+```yaml
+modules:
+  - mod: "sshd"
+    paths:
+      - /etc/ssh/sshd_config
+
+  - mod: "ufw"
+    script: "ufw/script.sh"   # 相对于 script-hooks/
+
+  - mod: "traefik"
+    parent_path: "/data/dockerapps/traefik/"
+    paths:
+      - docker-compose.yml
+      - traefik.yml
+      - dynamic/
+```
+
+字段说明：
+- `mod`（必填）：模块名称，用于日志和选择性操作
+- `paths`（二选一）：要备份的路径列表（文件或目录）
+- `parent_path`（可选）：拼接到 `paths` 前的父路径
+- `script`（二选一）：相对于 `script-hooks/` 的脚本路径
+
+> ⚠️ `paths` 与 `script` 互斥，优先使用 `script`。
+
+---
+
+### 5.2 备份流程
+
+1. **加载 `.env`** → 获取 `MIRROR_ROOT`
+2. **读取 `mirror-rules.yaml`**
+3. **遍历每个模块**：
+   - 若含 `script`：
+     - 执行 `script-hooks/<script> backup`
+   - 否则：
+     - 对每个 `path`（拼接 `parent_path`）：
+       - 若为文件：复制到 `mirror/<path>`，生成 `.meta`
+       - 若为目录：递归处理（跳过 `*.log`, `cache`, `.git` 等）
+4. **记录日志**（INFO/WARNING/ERROR）
+5. **结束**（不自动 `git commit/push`，留用户控制）
+
+---
+
+### 5.3 还原流程
+
+1. **检查是否 root**（非 root 则报错退出）
+2. **加载配置 & 定位模块/路径**
+3. **对每个目标路径**：
+   - 检查 `mirror/<path>.meta` 是否存在
+   - 读取元数据（`mode`, `uid`, `gid`, `type`）
+   - **文件**：`cp` + `chmod` + `chown`
+   - **目录**：`rsync` 同步内容 + 设置目录属性
+4. **严格不删除**：仅覆盖/新增，不删除目标端额外文件
+5. **交互确认**：`restore-all` 需输入 `YES`
+
+---
+
+### 5.4 脚本钩子机制
+
+- 脚本位置：`script-hooks/<relative_path>`
+- 调用方式：
+  ```bash
+  bash script-hooks/ufw/script.sh backup   # 备份时
+  bash script-hooks/ufw/script.sh restore  # 还原时
+  ```
+- 脚本需自行处理：
+  - 备份：将输出写入 `mirror/` 下对应位置
+  - 还原：从 `mirror/` 读取并应用到系统
+- 工具不干预脚本内部逻辑，仅传递 `backup`/`restore` 参数
+
+---
+
+### 5.5 元数据管理 (`.meta` 文件)
+
+每个备份文件/目录旁生成同名 `.meta` 文件：
+
+```ini
+mode:644
+uid:0
+gid:0
+type:file
+```
+
+或
+
+```ini
+mode:755
+uid:0
+gid:0
+type:dir
+```
+
+> 还原时严格依赖此文件，缺失则跳过。
+
+---
+
+### 5.6 权限与安全
+
+| 操作 | 权限要求 | 说明 |
+|------|--------|------|
+| `backup` | 普通用户 | 只需读权限 |
+| `restore` | **root** | 需写系统目录 + 修改权限/属主 |
+| `restore-all` | root + 交互确认 | 高危操作，强制确认 |
+
+---
+
+### 5.7 日志系统
+
+- **日志文件**：默认 `./logs/confmirror.log`（可配置）
+- **格式**：`[2026-01-25 20:00:00] [INFO] 消息`
+- **轮转**：保留最近 `LOG_KEEP_LINES` 行（默认 100）
+- **终端输出**：带颜色（INFO=绿, WARNING=黄, ERROR=红）
+
+---
+
+## 6. 命令行接口 (CLI)
 
 ```bash
-# 克隆或下载项目
-cd git-config-backup
-
-# 复制环境配置文件
-cp .env.example .env
-
-# 根据需要修改.env文件中的配置
-nano .env
-```
-
-### 2. 配置备份模块
-
-编辑 `sync.conf` 文件，定义需要备份的模块和路径：
-
-```json
-[
-  {
-    "mod": "系统主机配置",
-    "paths": [
-      "/etc/hostname",
-      "/etc/hosts",
-      "/etc/resolv.conf"
-    ]
-  },
-  {
-    "mod": "SSH配置",
-    "parent-path": "/etc/",
-    "paths": [
-      "ssh/sshd_config",
-      "ssh/ssh_config"
-    ]
-  },
-  {
-    "mod": "脚本化备份示例",
-    "script-path": "example_backup_script.sh"
-  }
-]
-```
-
-### 3. 初始化Git仓库
-
-```bash
-# 初始化备份仓库
-cd backup
-git init
-git add .
-git commit -m "初始备份仓库"
-cd ..
-
-# 如果需要远程同步
-git remote add origin <your-git-repo-url>
-```
-
-### 4. 执行备份
-
-```bash
-# 备份所有模块（无需sudo）
-python3 backup.py
+# 全量备份
+confmirror backup-all
 
 # 备份指定模块
-python3 backup.py mod "系统主机配置"
+confmirror backup --mod sshd
 
-# 试运行模式（不实际备份）
-python3 backup.py --dry-run
+# 全量还原（交互确认）
+confmirror restore-all
+
+# 还原单个路径
+confmirror restore /etc/hosts
+
+# 还原指定模块
+confmirror restore --mod ufw
+
+
+# 显示版本
+confmirror --version
+
+# 显示帮助
+confmirror --help
 ```
 
-### 5. 执行恢复
+> 所有命令均通过统一入口 `confmirror` 分发。
 
+---
+
+## 7. 使用示例
+
+### 初始化
 ```bash
-# 恢复指定文件（需要sudo）
-sudo python3 restore.py restore /etc/hosts
-
-# 恢复指定模块
-sudo python3 restore.py restore-mod "SSH配置"
-
-# 全量恢复（危险操作）
-sudo python3 restore.py restore-all
-
-# 强制覆盖已存在文件
-sudo python3 restore.py restore /etc/hosts --force
+git clone https://github.com/you/confmirror.git
+cd confmirror
+cp .env.example .env
+# 编辑 .env: MIRROR_ROOT=/data/configs/my-server-configs
 ```
 
-## 配置说明
-
-### .env 配置文件
-
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| BACKUP_CONFIG_FILE | 备份配置文件路径 | ./sync.conf |
-| GIT_BACKUP_ROOT | Git备份根目录 | ./backup |
-| GIT_BACKUP_SCRIPT_ROOT | 脚本备份根目录 | ./backup-script |
-| LOG_FILE | 日志文件路径 | ./log-backup.log |
-| LOG_KEEP_LINES | 日志保留行数 | 100 |
-| AUTO_GIT_COMMIT | 是否自动Git提交 | false |
-| AUTO_GIT_PUSH | 是否自动Git推送 | false |
-| VERBOSE | 是否显示详细输出 | true |
-| EXCLUDE_PATTERNS | 排除文件模式 | .git,*.log,*.tmp等 |
-| ENABLE_FILE_CHECKSUM | 是否启用文件校验 | false |
-
-### 备份配置文件 (sync.conf)
-
-每个模块支持以下配置：
-
-- `mod`: 模块名称（必需）
-- `paths`: 需要备份的路径列表
-- `parent-path`: 父路径前缀（可选）
-- `script-path`: 自定义脚本路径（可选）
-
-#### 文件路径备份
-```json
-{
-  "mod": "基础配置",
-  "paths": ["/etc/hosts", "/etc/hostname"]
-}
-```
-
-#### 带父路径的备份
-```json
-{
-  "mod": "SSH配置",
-  "parent-path": "/etc/",
-  "paths": ["ssh/sshd_config", "ssh/ssh_config"]
-}
-```
-
-#### 脚本化备份
-```json
-{
-  "mod": "复杂备份",
-  "script-path": "custom_backup.sh"
-}
-```
-
-## 脚本化备份
-
-对于复杂的备份需求，可以编写自定义脚本：
-
+### 首次备份
 ```bash
-#!/bin/bash
-# custom_backup.sh
-
-OPERATION=$1
-
-case "$OPERATION" in
-    "backup")
-        echo "执行自定义备份逻辑..."
-        # 在这里编写备份逻辑
-        ;;
-    "restore")
-        echo "执行自定义恢复逻辑..."
-        # 在这里编写恢复逻辑
-        ;;
-    *)
-        echo "错误: 未知操作类型"
-        exit 1
-        ;;
-esac
+./confmirror backup
+# 自动生成 /data/configs/my-server-configs/ 并提示编辑 mirror-rules.yaml
 ```
 
-脚本接收一个参数：
-- `backup`: 执行备份操作
-- `restore`: 执行恢复操作
-
-## 安全注意事项
-
-1. **权限管理**: 恢复脚本需要root权限，请谨慎使用
-2. **备份验证**: 建议启用文件校验和功能
-3. **全量恢复**: 全量恢复是危险操作，请确保了解后果
-4. **Git安全**: 如果使用远程Git仓库，请确保仓库安全
-
-## 高级功能
-
-### 文件校验和
-
-在 `.env` 文件中启用：
-```env
-ENABLE_FILE_CHECKSUM=true
-```
-
-启用后会在备份时计算MD5校验和，恢复时验证文件完整性。
-
-### 自动Git操作
-
-在 `.env` 文件中配置：
-```env
-AUTO_GIT_COMMIT=true
-AUTO_GIT_PUSH=true
-GIT_REMOTE_URL=https://github.com/user/config-backup.git
-```
-
-### 排除文件模式
-
-自定义排除的文件和目录：
-```env
-EXCLUDE_PATTERNS=.git,*.log,*.tmp,cache,temp,__pycache__,node_modules
-```
-
-## 故障排除
-
-### 常见问题
-
-1. **权限不足**
-   - 备份脚本：通常无需sudo
-   - 恢复脚本：必须使用sudo
-
-2. **配置文件解析错误**
-   - 检查JSON格式是否正确
-   - 确保所有字符串都用双引号
-
-3. **Git操作失败**
-   - 检查Git仓库是否正确初始化
-   - 确认远程URL和分支配置
-
-4. **备份失败**
-   - 检查源文件是否存在
-   - 确认目标目录权限
-   - 查看日志文件获取详细错误信息
-
-### 日志查看
-
+### 还原 SSH 配置
 ```bash
-# 查看完整日志
-tail -f log-backup.log
-
-# 查看最近的错误
-grep "ERROR" log-backup.log
+sudo ./confmirror restore --mod sshd
 ```
 
-## 开发说明
-
-### 依赖管理
-
-本工具主要使用Python标准库，无需额外安装依赖。如果需要扩展功能，可以参考 `requirements.txt` 中的可选依赖。
-
-### 代码结构
-
-- `BackupConfig/RestoreConfig`: 配置管理类
-- `BackupLogger/RestoreLogger`: 日志管理类
-- `BackupManager/RestoreManager`: 核心业务逻辑
-- `load_env_config()`: 环境配置加载
-- `main()`: 命令行入口
-
-### 扩展开发
-
-如需添加新功能，建议：
-
-1. 保持现有的代码结构和命名规范
-2. 添加适当的日志记录
-3. 更新配置文件和文档
-4. 编写测试用例
-
-## 许可证
-
-MIT License
-
-## 贡献
-
-欢迎提交Issue和Pull Request来改进这个工具。
+---

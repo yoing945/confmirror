@@ -1,0 +1,13 @@
+# example/confmirror.yaml
+metadata:
+  name: "web-server"
+  backup_root: "./mirror"
+  script_hooks_dir: "./hooks"
+  log_dir: "./logs"
+  git_auto_commit: true
+  git_auto_push: false
+
+modules:
+  - name: "sshd"
+    paths:
+      - "/etc/ssh/sshd_config"
