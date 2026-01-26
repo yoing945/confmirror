@@ -10,9 +10,9 @@
 - [3. 整体架构](#3-整体架构)
 - [4. 目录结构](#4-目录结构)
   - [4.1 工具仓库（`confmirror/`）](#41-工具仓库-confmirror)
-  - [4.2 数据仓库（由 `.env` 指定）](#42-数据仓库由-env-指定)
+  - [4.2 数据仓库](#42-数据仓库)
 - [5. 功能详细设计](#5-功能详细设计)
-  - [5.1 配置文件 (`backup-rules.yaml`)](#51-配置文件-backup-rulesyaml)
+  - [5.1 配置文件 (`confmirror.yaml`)](#51-配置文件-confmirroryaml)
   - [5.2 备份流程](#52-备份流程)
   - [5.3 还原流程](#53-还原流程)
   - [5.4 脚本钩子机制](#54-脚本钩子机制)
@@ -58,9 +58,9 @@
 |   (Tool Repo)    |<----->|  (Config Mirror)    |
 +------------------+       +---------------------+
         |                           |
-        | .env → MIRROR_ROOT        | mirror-rules.yaml
+        | confmirror.yaml → backup_root | confmirror.yaml
         | CLI commands              | mirror/
-        |                           | script-hooks/
+        |                           | hooks/
         v                           v
     User Interaction           Git Version Control
 ```
@@ -91,24 +91,25 @@ confmirror/                     # ← 工具仓库（代码）
 ├── src/
 │   ├── __init__.py
 │   ├── cli.py                  # CLI 解析
-│   ├── core.py                 # 公共函数（路径、日志、.env 加载）
+│   ├── core.py                 # 公共函数（路径、日志等）
+│   ├── config.py               # 配置文件加载
 │   ├── backup.py               # 备份逻辑
 │   └── restore.py              # 还原逻辑
 ├── logs/                       # ← 默认日志目录（可配置）
-├── .env                        # ← 指向数据仓库根目录
-├── .env.example
+├── example/
+│   └── confmirror.yaml         # ← 配置文件示例
 ├── README.md
 ├── pyproject.toml              # ← 支持 pip install
 └── .gitignore
 ```
 
-### 4.2 数据仓库（由 `.env` 指定）
+### 4.2 数据仓库
 
-默认路径：`../confmirror-repository`（若未设置 `BACKUP_ROOT`）
+默认路径：`./mirror`（由配置文件中的 `backup_root` 指定）
 
 ```text
-sync-mainserver-configs/        # ← 数据仓库（由 BACKUP_ROOT 指定）
-├── mirror-rules.yaml           # ← 镜像备份规则配置
+confmirror-data/                # ← 数据仓库
+├── confmirror.yaml             # ← 配置文件
 ├── mirror/                     # ← 配置镜像（1:1 系统结构）
 │   └── etc/
 │       └── ssh/
@@ -116,33 +117,41 @@ sync-mainserver-configs/        # ← 数据仓库（由 BACKUP_ROOT 指定）
 │           └── sshd_config.meta
 ├── script-hooks/               # ← 脚本钩子目录
 │   └── ufw/
-│       └── script.sh           # ← 被 mirror-rules.yaml 引用
+│       └── script.sh           # ← 被 confmirror.yaml 引用
 └── .gitignore
 ```
 
 > 💡 **关键约定**：
 > - 所有备份内容存于 `mirror/`
 > - 所有脚本钩子存于 `script-hooks/<mod>/script.sh`
-> - 配置文件必须命名为 `mirror-rules.yaml`
+> - 配置文件默认命名为 `confmirror.yaml`
 
 ---
 
 ## 5. 功能详细设计
 
-### 5.1 配置文件 (`mirror-rules.yaml`)
+### 5.1 配置文件 (`confmirror.yaml`)
 
 采用 **YAML 格式**，支持注释、灵活缩进。
 
 ```yaml
+metadata:
+  name: "web-server"             # 可选，默认为当前目录名
+  backup_root: "./mirror"        # 镜像根目录
+  script_hooks_dir: "./hooks"    # 脚本钩子目录
+  log_dir: "./logs"              # 日志目录
+  git_auto_commit: true          # 是否自动提交到 Git
+  git_auto_push: false           # 是否自动推送到远程
+
 modules:
-  - mod: "sshd"
+  - name: "sshd"
     paths:
-      - /etc/ssh/sshd_config
+      - "/etc/ssh/sshd_config"
 
-  - mod: "ufw"
-    script: "ufw/script.sh"   # 相对于 script-hooks/
+  - name: "ufw"
+    script: "ufw/script.sh"      # 相对于 hooks/
 
-  - mod: "traefik"
+  - name: "traefik"
     parent_path: "/data/dockerapps/traefik/"
     paths:
       - docker-compose.yml
@@ -151,10 +160,12 @@ modules:
 ```
 
 字段说明：
-- `mod`（必填）：模块名称，用于日志和选择性操作
+- `metadata`（可选）：元数据配置，包含备份根目录、脚本钩子目录等
+- `modules`（必填）：模块列表
+- `name`（必填）：模块名称，用于日志和选择性操作
 - `paths`（二选一）：要备份的路径列表（文件或目录）
 - `parent_path`（可选）：拼接到 `paths` 前的父路径
-- `script`（二选一）：相对于 `script-hooks/` 的脚本路径
+- `script`（二选一）：相对于 `hooks/` 的脚本路径
 
 > ⚠️ `paths` 与 `script` 互斥，优先使用 `script`。
 
@@ -162,17 +173,17 @@ modules:
 
 ### 5.2 备份流程
 
-1. **加载 `.env`** → 获取 `MIRROR_ROOT`
-2. **读取 `mirror-rules.yaml`**
-3. **遍历每个模块**：
+1. **读取 `confmirror.yaml`** → 获取配置
+2. **遍历每个模块**：
    - 若含 `script`：
-     - 执行 `script-hooks/<script> backup`
+     - 执行 `hooks/<script> backup`
    - 否则：
      - 对每个 `path`（拼接 `parent_path`）：
        - 若为文件：复制到 `mirror/<path>`，生成 `.meta`
        - 若为目录：递归处理（跳过 `*.log`, `cache`, `.git` 等）
-4. **记录日志**（INFO/WARNING/ERROR）
-5. **结束**（不自动 `git commit/push`，留用户控制）
+3. **记录日志**（INFO/WARNING/ERROR）
+4. **Git 操作**（如果启用自动提交）
+5. **结束**
 
 ---
 
@@ -192,11 +203,11 @@ modules:
 
 ### 5.4 脚本钩子机制
 
-- 脚本位置：`script-hooks/<relative_path>`
+- 脚本位置：`hooks/<relative_path>`
 - 调用方式：
   ```bash
-  bash script-hooks/ufw/script.sh backup   # 备份时
-  bash script-hooks/ufw/script.sh restore  # 还原时
+  bash hooks/ufw/script.sh backup   # 备份时
+  bash hooks/ufw/script.sh restore  # 还原时
   ```
 - 脚本需自行处理：
   - 备份：将输出写入 `mirror/` 下对应位置
@@ -241,7 +252,7 @@ type:dir
 
 ### 5.7 日志系统
 
-- **日志文件**：默认 `./logs/confmirror.log`（可配置）
+- **日志文件**：默认 `./logs/{name}.log`（若未指定文件名，则使用 metadata.name）
 - **格式**：`[2026-01-25 20:00:00] [INFO] 消息`
 - **轮转**：保留最近 `LOG_KEEP_LINES` 行（默认 100）
 - **终端输出**：带颜色（INFO=绿, WARNING=黄, ERROR=红）
@@ -252,20 +263,19 @@ type:dir
 
 ```bash
 # 全量备份
-confmirror backup-all
+confmirror backup
 
 # 备份指定模块
-confmirror backup --mod sshd
+confmirror backup --module sshd
 
 # 全量还原（交互确认）
-confmirror restore-all
+confmirror restore
 
 # 还原单个路径
 confmirror restore /etc/hosts
 
 # 还原指定模块
-confmirror restore --mod ufw
-
+confmirror restore --module ufw
 
 # 显示版本
 confmirror --version
@@ -284,19 +294,20 @@ confmirror --help
 ```bash
 git clone https://github.com/you/confmirror.git
 cd confmirror
-cp .env.example .env
-# 编辑 .env: MIRROR_ROOT=/data/configs/my-server-configs
+pip install -e .
 ```
 
 ### 首次备份
 ```bash
+# 创建配置文件
+cp example/confmirror.yaml ./
+# 编辑 confmirror.yaml 以满足你的需求
 ./confmirror backup
-# 自动生成 /data/configs/my-server-configs/ 并提示编辑 mirror-rules.yaml
 ```
 
 ### 还原 SSH 配置
 ```bash
-sudo ./confmirror restore --mod sshd
+sudo ./confmirror restore --module sshd
 ```
 
 ---

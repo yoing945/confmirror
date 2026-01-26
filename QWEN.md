@@ -62,13 +62,13 @@ confmirror/
 项目使用 `confmirror.yaml` 作为配置文件，定义备份规则：
 
 ```yaml
-settings:
-  name: "web-server"  # 可选，默认为当前目录名
-  backup_root: "./mirror"
-  script_hooks_dir: "./hooks"
-  log_dir: "./logs"   # 日志目录，若未指定文件名则使用 settings.name
-  git_auto_commit: true
-  git_auto_push: false
+metadata:
+  name: "web-server"             # 可选，默认为当前目录名
+  backup_root: "./mirror"        # 镜像根目录
+  script_hooks_dir: "./script-hooks"    # 脚本钩子目录
+  log_dir: "./logs"              # 日志目录
+  git_auto_commit: true          # 是否自动提交到 Git
+  git_auto_push: false           # 是否自动推送到远程
 
 modules:
   - name: "sshd"
