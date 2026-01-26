@@ -3,12 +3,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from confmirror import logger
-
 from .meta import read_meta
 
 
-def restore_path(original: Path, mirror_root: Path):
+def restore_path(original: Path, mirror_root: Path, logger):
     backup = mirror_root / "mirror" / str(original).lstrip("/")
     meta = read_meta(backup)
     if not meta:

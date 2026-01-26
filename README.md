@@ -1,4 +1,4 @@
-# **confmirror**  
+# **confmirror**
 > **Configuration Mirror** —— 基于 Git 的声明式系统配置镜像与还原工具
 
 ---
@@ -70,7 +70,18 @@
 
 ---
 
-## 4. 目录结构
+## 4. 低耦合设计
+
+confmirror 采用低耦合设计，与 Git 操作完全解耦，支持多种 Git 工作流：
+
+- **Git 功能独立**：Git 的 submodule、sparse-checkout、branch 等功能可单独使用
+- **灵活部署**：支持完整克隆、部分检出、多仓库管理等多种部署方式
+- **兼容性好**：无论使用哪种 Git 策略，confmirror 都能在当前目录正常工作
+- **扩展性强**：用户可根据需要自由选择 Git 工作流，不影响工具功能
+
+---
+
+## 5. 目录结构
 
 ### 4.1 工具仓库（`confmirror/`）
 

@@ -1,5 +1,3 @@
-# src/confmirror/config.py
-
 from pathlib import Path
 
 import yaml
@@ -20,23 +18,24 @@ def load_config() -> dict:
     if not isinstance(config, dict):
         raise ValueError(f"{CONFIG_FILENAME} 必须是一个 YAML 映射（dict）")
 
-    meta = config.setdefault("metadata", {})
-    # 必填：name
-    if "name" not in meta:
-        raise KeyError("metadata.name 是必填项（用于标识配置集）")
+    settings = config.setdefault("settings", {})
+
+    # 如果没有设置 name，则使用当前目录名
+    if "name" not in settings:
+        settings["name"] = Path.cwd().name
 
     # 默认值
-    meta.setdefault("backup_root", "./mirror")
-    meta.setdefault("script_hooks_dir", "./script-hooks")
-    meta.setdefault("log_dir", "./logs")          # ← 新增日志目录配置
-    meta.setdefault("git_auto_commit", True)
-    meta.setdefault("git_auto_push", False)
+    settings.setdefault("backup_root", "./mirror")
+    settings.setdefault("script_hooks_dir", "./script-hooks")
+    settings.setdefault("log_dir", "./logs")          # ← 新增日志目录配置
+    settings.setdefault("git_auto_commit", True)
+    settings.setdefault("git_auto_push", False)
 
     # 路径标准化（相对于当前工作目录）
     base = Path.cwd()
-    meta["backup_root"] = (base / meta["backup_root"]).resolve()
-    meta["script_hooks_dir"] = (base / meta["script_hooks_dir"]).resolve()
-    meta["log_dir"] = (base / meta["log_dir"]).resolve()
+    settings["backup_root"] = (base / settings["backup_root"]).resolve()
+    settings["script_hooks_dir"] = (base / settings["script_hooks_dir"]).resolve()
+    settings["log_dir"] = (base / settings["log_dir"]).resolve()
 
     # 模块字段校验：modules[].name
     for i, mod in enumerate(config.get("modules", [])):
