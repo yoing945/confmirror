@@ -4,6 +4,28 @@ import yaml
 
 CONFIG_FILENAME = "confmirror.yaml"
 
+class ConfigKeys:
+    """配置键常量类"""
+    # 配置节
+    SECTION_SETTINGS = "settings"
+    SECTION_MODULES = "modules"
+
+    # 设置键
+    NAME = "name"
+    BACKUP_ROOT = "backup_root"
+    SCRIPT_HOOKS_DIR = "script_hooks_dir"
+    LOG_DIR = "log_dir"
+    GIT_AUTO_COMMIT = "git_auto_commit"
+    GIT_AUTO_PUSH = "git_auto_push"
+    DEBUG_MODE = "debug_mode"
+
+    # 模块键
+    MOD_NAME = "name"
+    MOD_PATHS = "paths"
+    MOD_SCRIPT = "script"
+    MOD_PARENT_PATH = "parent_path"
+
+
 def load_config() -> dict:
     config_path = Path.cwd() / CONFIG_FILENAME
     if not config_path.exists():
@@ -16,32 +38,42 @@ def load_config() -> dict:
         config = yaml.safe_load(f)
 
     if not isinstance(config, dict):
-        raise ValueError(f"{CONFIG_FILENAME} 必须是一个 YAML 映射（dict）")
+        raise ValueError(f"{CONFIG_FILENAME} 必须是一个 YAML 映射(dict)")
 
-    settings = config.setdefault("settings", {})
 
-    # 如果没有设置 name，则使用当前目录名
-    if "name" not in settings:
-        settings["name"] = Path.cwd().name
+    settings_raw = config.get(ConfigKeys.SECTION_SETTINGS)
+    if settings_raw is None:
+        settings = {}
+        config[ConfigKeys.SECTION_SETTINGS] = settings
+    else:
+        settings = settings_raw
 
     # 默认值
-    settings.setdefault("backup_root", "./mirror")
-    settings.setdefault("script_hooks_dir", "./script-hooks")
-    settings.setdefault("log_dir", "./logs")          # ← 新增日志目录配置
-    settings.setdefault("git_auto_commit", True)
-    settings.setdefault("git_auto_push", False)
+    settings.setdefault(ConfigKeys.NAME, Path.cwd().name)
+    settings.setdefault(ConfigKeys.BACKUP_ROOT, "./mirror")
+    settings.setdefault(ConfigKeys.SCRIPT_HOOKS_DIR, "./script-hooks")
+    settings.setdefault(ConfigKeys.LOG_DIR, "./logs")
+    settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
+    settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
+    settings.setdefault(ConfigKeys.DEBUG_MODE, False)
 
     # 路径标准化（相对于当前工作目录）
     base = Path.cwd()
-    settings["backup_root"] = (base / settings["backup_root"]).resolve()
-    settings["script_hooks_dir"] = (base / settings["script_hooks_dir"]).resolve()
-    settings["log_dir"] = (base / settings["log_dir"]).resolve()
+    settings[ConfigKeys.BACKUP_ROOT] = (base / settings[ConfigKeys.BACKUP_ROOT]).resolve()
+    settings[ConfigKeys.SCRIPT_HOOKS_DIR] = (base / settings[ConfigKeys.SCRIPT_HOOKS_DIR]).resolve()
+    settings[ConfigKeys.LOG_DIR] = (base / settings[ConfigKeys.LOG_DIR]).resolve()
 
     # 模块字段校验：modules[].name
-    for i, mod in enumerate(config.get("modules", [])):
+    modules_raw = config.get(ConfigKeys.SECTION_MODULES)
+    if modules_raw is None:
+        modules = {}
+        config[ConfigKeys.SECTION_MODULES] = modules
+    else:
+        modules = modules_raw 
+    for i, mod in enumerate(modules):
         if not isinstance(mod, dict):
-            raise ValueError(f"modules[{i}] 必须是映射")
-        if "name" not in mod:
-            raise KeyError(f"modules[{i}].name 缺失")
+            raise ValueError(f"{ConfigKeys.SECTION_MODULES}[{i}] 必须是映射")
+        if ConfigKeys.MOD_NAME not in mod:
+            raise KeyError(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
 
     return config

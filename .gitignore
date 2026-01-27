@@ -180,6 +180,7 @@ Thumbs.db
 # sync.conf
 
 # 日志文件
+logs/
 *.log
 log-*.log
 log-backup.log
@@ -189,9 +190,12 @@ log-backup.log
 *.lock
 
 # 测试文件
+test-logs/
 test_*.py
 *_test.py
 tests/
+
+example*/
 
 # 配置文件（敏感信息）
 config.local.*
