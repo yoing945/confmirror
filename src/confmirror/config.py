@@ -1,8 +1,10 @@
+import logging
 from pathlib import Path
 
 import yaml
 
 CONFIG_FILENAME = "confmirror.yaml"
+APP_NAME = "confmirror"
 
 class ConfigKeys:
     """配置键常量类"""
@@ -17,7 +19,6 @@ class ConfigKeys:
     LOG_DIR = "log_dir"
     GIT_AUTO_COMMIT = "git_auto_commit"
     GIT_AUTO_PUSH = "git_auto_push"
-    DEBUG_MODE = "debug_mode"
 
     # 模块键
     MOD_NAME = "name"
@@ -28,11 +29,14 @@ class ConfigKeys:
 
 def load_config() -> dict:
     config_path = Path.cwd() / CONFIG_FILENAME
+    logger = logging.getLogger(APP_NAME)
+
     if not config_path.exists():
-        raise FileNotFoundError(
+        logger.error(
             f"❌ 当前目录未找到 {CONFIG_FILENAME}。\n"
             "请确保在项目根目录运行命令，并创建该文件。"
         )
+        return {}
 
     with open(config_path, encoding="utf-8") as f:
         config = yaml.safe_load(f)
@@ -55,7 +59,6 @@ def load_config() -> dict:
     settings.setdefault(ConfigKeys.LOG_DIR, "./logs")
     settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
     settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
-    settings.setdefault(ConfigKeys.DEBUG_MODE, False)
 
     # 路径标准化（相对于当前工作目录）
     base = Path.cwd()
@@ -69,11 +72,13 @@ def load_config() -> dict:
         modules = {}
         config[ConfigKeys.SECTION_MODULES] = modules
     else:
-        modules = modules_raw 
+        modules = modules_raw
     for i, mod in enumerate(modules):
         if not isinstance(mod, dict):
-            raise ValueError(f"{ConfigKeys.SECTION_MODULES}[{i}] 必须是映射")
+            logger.error(f"{ConfigKeys.SECTION_MODULES}[{i}] 必须是映射")
+            return {}
         if ConfigKeys.MOD_NAME not in mod:
-            raise KeyError(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
+            logger.error(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
+            return {}
 
     return config

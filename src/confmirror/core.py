@@ -18,7 +18,7 @@ def backup(config: dict, logger) -> None:
     # 确保备份根目录存在
     backup_root.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"开始备份，目标目录: {backup_root}")
+    logger.info(f"开始备份，镜像目录: {backup_root}")
 
     # 实现模块备份逻辑
     for module in config.get(ConfigKeys.SECTION_MODULES, []):

@@ -6,8 +6,6 @@ from pathlib import Path
 from .meta import write_meta
 
 
-EXCLUDE_PATTERNS = {".git", "*.log", "*.tmp", "cache", "temp", "*.pid", "*.bak", "downloads", "*.swp", "*.swap"}
-
 def should_exclude(name: str) -> bool:
     """
     检查文件名是否应该被排除
@@ -18,12 +16,7 @@ def should_exclude(name: str) -> bool:
     Returns:
         bool: 如果应该排除则返回True，否则返回False
     """
-    for pattern in EXCLUDE_PATTERNS:
-        if pattern.startswith("*."):
-            if name.endswith(pattern[1:]) or name.startswith(pattern[1:]):
-                return True
-        elif pattern == name:
-            return True
+    # 默认不排除任何文件，让用户通过配置来决定哪些文件需要排除
     return False
 
 def backup_path(src: Path, mirror_root: Path, module_name: str, logger):
@@ -40,6 +33,11 @@ def backup_path(src: Path, mirror_root: Path, module_name: str, logger):
         logger.warning(f"[路径不存在] 跳过备份: {src}")
         return
 
+    # 检查是否为支持的文件类型
+    if not (src.is_file() or src.is_dir()):
+        logger.warning(f"[跳过] 不支持的文件类型: {src}")
+        return
+
     # 直接使用源路径的绝对路径作为备份路径，不使用/mirror子目录
     # 这样可以保持与原始shell脚本一致的行为
     dest = mirror_root / str(src).lstrip('/')
@@ -48,8 +46,6 @@ def backup_path(src: Path, mirror_root: Path, module_name: str, logger):
         _backup_file(src, dest, module_name, logger)
     elif src.is_dir():
         _backup_directory(src, dest, module_name, logger)
-    else:
-        logger.warning(f"[跳过] 不支持的文件类型: {src}")
 
 def _backup_directory(src_dir: Path, dest_dir: Path, module_name: str, logger):
     """
@@ -65,6 +61,11 @@ def _backup_directory(src_dir: Path, dest_dir: Path, module_name: str, logger):
 
     # 创建目标目录
     dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # 获取源目录的统计信息并写入目录的元数据
+    src_stat = src_dir.stat()
+    dir_mode = oct(src_stat.st_mode)[-3:]
+    write_meta(dest_dir, dir_mode, src_stat.st_uid, src_stat.st_gid, "dir")
 
     # 获取目录中所有条目（包括隐藏文件）
     for item in src_dir.iterdir():

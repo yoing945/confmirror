@@ -3,6 +3,8 @@
 import logging
 from pathlib import Path
 
+from confmirror.config import APP_NAME
+
 
 def setup_logger(log_dir: Path, config_name: str) -> logging.Logger:
     # 检查 log_dir 是否包含文件名还是只是目录
@@ -21,7 +23,7 @@ def setup_logger(log_dir: Path, config_name: str) -> logging.Logger:
             # 使用默认日志文件名
             log_file = log_path / "log.log"
 
-    logger = logging.getLogger("confmirror")
+    logger = logging.getLogger(APP_NAME)
     logger.setLevel(logging.DEBUG)
 
     # 清除旧 handler（避免重复）
