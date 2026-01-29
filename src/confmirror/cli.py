@@ -82,7 +82,7 @@ def restore():
         sys.exit(1)
 
 @main.command()
-@click.option('--module', '-m', type=str, help='查看指定模块的权限信息')
+@click.option('-m', '--module', type=str, help='查看指定模块的权限信息')
 @click.argument('target_path', required=False, type=str)
 @click.option('-r', '--recursive', is_flag=True, help='递归查看路径下的所有文件权限')
 def perms(module, target_path, recursive):
@@ -107,11 +107,11 @@ def perms(module, target_path, recursive):
             # 没有参数，列出所有模块
             modules = config.get(ConfigKeys.SECTION_MODULES, [])
             if modules:
-                print("可用的模块:")
+                click.echo("可用的模块:")
                 for mod in modules:
-                    print(f"  - {mod[ConfigKeys.MOD_NAME]}")
+                    click.echo(f"  - {mod[ConfigKeys.MOD_NAME]}")
             else:
-                print("没有找到任何模块")
+                click.echo("没有找到任何模块")
 
     except Exception as e:
         click.echo(f"❌ 查看权限信息失败: {e}", err=True)
