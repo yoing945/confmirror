@@ -17,7 +17,10 @@ def main():
     pass
 
 @main.command()
-def backup():
+@click.option('-m', '--module', type=str, help='指定要备份的模块名称')
+@click.argument('target_path', required=False, type=str)
+@click.option('-r', '--recursive', is_flag=True, help='递归备份路径下的所有文件')
+def backup(module, target_path, recursive):
     # 备份
     try:
         # 加载配置文件
@@ -32,9 +35,22 @@ def backup():
         log_dir = settings[ConfigKeys.LOG_DIR]
         name = settings[ConfigKeys.NAME]
         logger = setup_logger(log_dir, name)
-        logger.info("开始执行备份任务")
+        backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+        logger.info(f"开始执行备份，镜像目录: {backup_root}")
 
-        core_backup(config, logger)
+        # 根据参数决定备份方式
+        if module:
+            # 分模块备份
+            logger.info(f"正在执行模块备份: {module}")
+            core_backup(config, logger, target_module_name=module)
+        elif target_path:
+            # 指定路径备份
+            logger.info(f"开始执行路径备份: {target_path}")
+            core_backup(config, logger, target_path=target_path, recursive=recursive)
+        else:
+            # 全量备份
+            logger.info("开始执行全量备份")
+            core_backup(config, logger)
 
         if settings.get(ConfigKeys.GIT_AUTO_COMMIT):
             msg = f"confmirror 备份: {name}"
@@ -45,7 +61,7 @@ def backup():
             )
             logger.info("Git 提交完成")
 
-        logger.info("✅ 备份成功完成")
+        logger.info("✅ 备份完成")
     except Exception as e:
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())

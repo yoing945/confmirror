@@ -32,3 +32,26 @@ def read_meta(path: Path):
                 k, v = line.strip().split(":", 1)
                 data[k] = v
     return data
+
+
+def meta_path_exists(path: Path) -> bool:
+    """
+    检查给定路径是否存在对应的元数据文件
+
+    Args:
+        path: 需要检查的路径
+
+    Returns:
+        bool: 如果存在对应的元数据文件则返回True，否则返回False
+    """
+    # 尝试普通文件的元数据文件
+    meta_file = path.with_suffix(path.suffix + ".meta")
+    if meta_file.exists():
+        return True
+
+    # 尝试目录的元数据文件
+    meta_dir = path.with_name(path.name + '.dir.meta')
+    if meta_dir.exists():
+        return True
+
+    return False
