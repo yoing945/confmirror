@@ -18,9 +18,8 @@ def main():
 
 @main.command()
 @click.option('-m', '--module', type=str, help='指定要备份的模块名称')
-@click.argument('target_path', required=False, type=str)
-@click.option('-r', '--recursive', is_flag=True, help='递归备份路径下的所有文件')
-def backup(module, target_path, recursive):
+@click.argument('target_paths', nargs=-1, type=str)
+def backup(module, target_paths):
     # 备份
     try:
         # 加载配置文件
@@ -43,10 +42,11 @@ def backup(module, target_path, recursive):
             # 分模块备份
             logger.info(f"正在执行模块备份: {module}")
             core_backup(config, logger, target_module_name=module)
-        elif target_path:
-            # 指定路径备份
-            logger.info(f"开始执行路径备份: {target_path}")
-            core_backup(config, logger, target_path=target_path, recursive=recursive)
+        elif target_paths:
+            # 指定路径备份 - 支持多个路径
+            for target_path in target_paths:
+                logger.info(f"开始执行路径备份: {target_path}")
+                core_backup(config, logger, target_path=target_path)
         else:
             # 全量备份
             logger.info("开始执行全量备份")
@@ -100,8 +100,7 @@ def restore():
 @main.command()
 @click.option('-m', '--module', type=str, help='查看指定模块的权限信息')
 @click.argument('target_path', required=False, type=str)
-@click.option('-r', '--recursive', is_flag=True, help='递归查看路径下的所有文件权限')
-def perms(module, target_path, recursive):
+def perms(module, target_path):
     """查看备份文件的权限信息"""
     try:
         config = load_config()
@@ -117,7 +116,7 @@ def perms(module, target_path, recursive):
             display_perms_info(perms_info, config)
         elif target_path:
             # 查看指定路径的权限信息
-            perms_info = get_perms_for_path(config, target_path, recursive)
+            perms_info = get_perms_for_path(config, target_path, False)
             display_perms_info(perms_info, config)
         else:
             # 没有参数，列出所有模块

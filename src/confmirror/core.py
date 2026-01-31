@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from .backup import backup_module, backup_single_path
+from .backup import backup_module, backup_single_path, expand_path_patterns
 from .config import ConfigKeys
 
 def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
@@ -23,11 +23,11 @@ def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
                     module_path = Path(parent_path) / path_str
                 else:
                     module_path = Path(path_str)
-                if path == module_path:
+                if path.is_relative_to(module_path):
                     return module
     return None
 
-def backup(config: dict, logger, target_module_name: Optional[str] = None, target_path: Optional[str] = None, recursive: bool = False) -> None:
+def backup(config: dict, logger, target_module_name: Optional[str] = None, target_path: Optional[str] = None) -> None:
     """
     执行备份操作
 
@@ -36,7 +36,6 @@ def backup(config: dict, logger, target_module_name: Optional[str] = None, targe
         logger: 日志记录器
         target_module_name: 指定要备份的模块名称
         target_path: 指定要备份的路径
-        recursive: 是否递归备份路径下的所有文件
     """
     settings = config[ConfigKeys.SECTION_SETTINGS]
     backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
@@ -54,32 +53,24 @@ def backup(config: dict, logger, target_module_name: Optional[str] = None, targe
         backup_module(found_module, backup_root, logger)
 
     elif target_path:
-        # 指定路径备份
-        path = Path(target_path)
-        logger.info(f"[路径备份] 正在备份路径: {path}")
+        if not find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path)):
+            logger.error(f"路径 '{target_path}' 不属于任何模块，无法备份")
+            return
+        # 指定路径备份 - 处理通配符路径
+        # 展开可能的通配符路径
+        expanded_paths = expand_path_patterns(target_path)
 
-        # 首先检查目标路径是否存在元数据文件，如果有则直接进行备份
-        from .meta import meta_path_exists
-        mirrored_path = backup_root / str(path).lstrip('/')
+        if not expanded_paths:
+            logger.warning(f"路径模式未匹配到任何文件: {target_path}")
+            return
 
-        if meta_path_exists(mirrored_path):
-            # 存在对应的meta文件，进行备份
-            backup_single_path(path, backup_root, logger, recursive=recursive)
-        else:
-            # 检查路径是否在配置的模块路径列表中
-            modules = config.get(ConfigKeys.SECTION_MODULES, [])
-            found_module = find_matching_module_with_path(modules, path)
-            if found_module:
-                if path.is_file() or path.is_dir():
-                    backup_single_path(path, backup_root, logger, recursive=recursive)
-                else:
-                    logger.warning(f"路径不存在: {path}")
-            else:
-                logger.warning(f"路径 '{path}' 未在配置文件中定义")
+        # 对每个匹配的路径进行备份
+        for path in expanded_paths:
+            backup_single_path(path, backup_root, logger)
     else:
         # 全量备份
         for module in config.get(ConfigKeys.SECTION_MODULES, []):
-            backup_module(module, backup_root, logger)  
+            backup_module(module, backup_root, logger)
 
 
 
