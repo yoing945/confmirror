@@ -203,16 +203,25 @@ modules:
 
 ### 5.4 脚本钩子机制
 
-- 脚本位置：`hooks/<relative_path>`
+- 脚本位置：相对于 `script_hooks_dir` 配置项的路径（默认为 `./script-hooks/`）
 - 调用方式：
   ```bash
-  bash hooks/ufw/script.sh backup   # 备份时
-  bash hooks/ufw/script.sh restore  # 还原时
+  bash script-hooks/ufw/script.sh backup   # 备份时
+  bash script-hooks/ufw/script.sh restore  # 还原时（未来支持）
   ```
 - 脚本需自行处理：
   - 备份：将输出写入 `mirror/` 下对应位置
-  - 还原：从 `mirror/` 读取并应用到系统
-- 工具不干预脚本内部逻辑，仅传递 `backup`/`restore` 参数
+  - 还原：从 `mirror/` 读取并应用到系统（未来支持）
+- 工具不干预脚本内部逻辑，仅传递 `backup` 参数
+- 配置示例：
+  ```yaml
+  settings:
+    script_hooks_dir: "./script-hooks"  # 脚本钩子目录
+
+  modules:
+    - name: "ufw"
+      script: "ufw/script.sh"          # 相对于 script-hooks/ 的路径
+  ```
 
 ---
 

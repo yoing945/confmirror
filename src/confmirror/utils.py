@@ -1,8 +1,42 @@
 
+import fnmatch
 from pathlib import Path
 from typing import Dict
 
 from confmirror.config import ConfigKeys
+
+
+def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "") -> bool:
+    """
+    检查路径是否应该被排除
+
+    Args:
+        path: 要检查的路径
+        exclude_patterns: 排除模式列表
+        parent_path: 父路径，用于相对于 parent_path 的排除模式
+
+    Returns:
+        bool: 如果应该排除则返回True，否则返回False
+    """
+    path_str = str(path)
+
+    for pattern in exclude_patterns:
+        # 如果设置了 parent_path，将排除模式视为相对于 parent_path
+        if parent_path:
+            # 构造相对于 parent_path 的完整模式
+            relative_pattern = str(Path(parent_path) / pattern)
+            # 检查路径是否匹配相对于 parent_path 的模式
+            if (fnmatch.fnmatch(path_str, relative_pattern) or
+                path.match(relative_pattern)):
+                return True
+        else:
+            # 如果没有 parent_path，只检查原始排除模式
+            if (fnmatch.fnmatch(path_str, pattern) or
+                fnmatch.fnmatch(path.name, pattern) or
+                path.match(pattern)):
+                return True
+
+    return False
 
 
 def get_backup_path_str(config:Dict, full_path)->str:

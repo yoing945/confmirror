@@ -3,6 +3,7 @@ from typing import Optional
 
 from .backup import backup_module, backup_single_path, expand_path_patterns
 from .config import ConfigKeys
+from .utils import should_exclude_path
 
 def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
     """
@@ -16,14 +17,18 @@ def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
         包含该路径的模块配置字典，如果未找到则返回None
     """
     for module in modules:
-        if ConfigKeys.MOD_PATHS in module:
+        if ConfigKeys.MOD_INCLUDE_PATHS in module:
             parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
-            for path_str in module[ConfigKeys.MOD_PATHS]:
+            for path_str in module[ConfigKeys.MOD_INCLUDE_PATHS]:
                 if parent_path:
                     module_path = Path(parent_path) / path_str
                 else:
                     module_path = Path(path_str)
                 if path.is_relative_to(module_path):
+                    # 检查路径是否在排除列表中
+                    exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+                    if should_exclude_path(path, exclude_patterns, parent_path):
+                        continue  # 跳过被排除的路径
                     return module
     return None
 
@@ -50,15 +55,18 @@ def backup(config: dict, logger, target_module_name: Optional[str] = None, targe
         if not found_module:
             logger.error(f"找不到模块: '{target_module_name}' ")
             return
-        backup_module(found_module, backup_root, logger)
+        backup_module(found_module, backup_root, settings, logger)
 
     elif target_path:
-        if not find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path)):
+        module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
+        if not module:
             logger.error(f"路径 '{target_path}' 不属于任何模块，无法备份")
             return
-        # 指定路径备份 - 处理通配符路径
-        # 展开可能的通配符路径
-        expanded_paths = expand_path_patterns(target_path)
+        # 获取排除路径模式和父路径
+        all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+        parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+        # 展开可能的通配符路径，并应用排除规则
+        expanded_paths = expand_path_patterns(target_path, "", all_exclude_patterns)
 
         if not expanded_paths:
             logger.warning(f"路径模式未匹配到任何文件: {target_path}")
@@ -66,11 +74,15 @@ def backup(config: dict, logger, target_module_name: Optional[str] = None, targe
 
         # 对每个匹配的路径进行备份
         for path in expanded_paths:
+            # 检查路径是否在当前模块的排除列表中
+            if should_exclude_path(path, all_exclude_patterns, parent_path):
+                logger.info(f"[路径被排除] 跳过备份: {path}")
+                continue
             backup_single_path(path, backup_root, logger)
     else:
         # 全量备份
         for module in config.get(ConfigKeys.SECTION_MODULES, []):
-            backup_module(module, backup_root, logger)
+            backup_module(module, backup_root, settings, logger)
 
 
 

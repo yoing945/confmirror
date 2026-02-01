@@ -2,25 +2,13 @@ import os
 import shutil
 import subprocess
 import glob
+import fnmatch
 from pathlib import Path
 
 from confmirror.config import ConfigKeys
+from confmirror.utils import should_exclude_path
 
 from .meta import write_meta
-
-
-def should_exclude(name: str) -> bool:
-    """
-    检查文件名是否应该被排除
-
-    Args:
-        name: 文件或目录名称
-
-    Returns:
-        bool: 如果应该排除则返回True，否则返回False
-    """
-    # 默认不排除任何文件，让用户通过配置来决定哪些文件需要排除
-    return False
 
 def _backup_directory(src_dir: Path, dest_dir: Path, logger):
     """
@@ -99,20 +87,20 @@ def backup_single_path(src: Path, mirror_root: Path, logger):
         # 对于目录，只备份目录本身（不递归内容）
         _backup_directory(src, dest, logger)
 
-def run_backup_script(script_rel: str, mirror_root: Path, logger):
+def run_backup_script(script_rel: str, settings: dict, logger):
     """
     执行备份脚本
 
     Args:
         script_rel: 脚本相对路径
-        mirror_root: 镜像根目录
-        module_name: 模块名称
+        settings: 配置设置字典
         logger: 日志记录器
 
     Returns:
         bool: 脚本执行成功返回True，否则返回False
     """
-    script = mirror_root / "script-hooks" / script_rel
+    script_hooks_dir = Path(settings[ConfigKeys.SCRIPT_HOOKS_DIR])
+    script = script_hooks_dir / script_rel
     if not script.exists():
         logger.error(f"[脚本备份失败] → 脚本不存在 {script}")
         return False
@@ -126,7 +114,7 @@ def run_backup_script(script_rel: str, mirror_root: Path, logger):
         result = subprocess.run(
             [str(script), "backup"],
             check=True,
-            cwd=mirror_root,
+            cwd=Path(settings[ConfigKeys.SCRIPT_HOOKS_DIR]).parent,  # 使用备份根目录作为工作目录
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -145,17 +133,21 @@ def run_backup_script(script_rel: str, mirror_root: Path, logger):
         logger.error(f"[脚本执行异常] → : {str(e)}")
         return False
 
-def expand_path_patterns(path_pattern: str, parent_path: str = "") -> list:
+def expand_path_patterns(path_pattern: str, parent_path: str = "", exclude_patterns: list = []) -> list:
     """
     展开通配符路径模式为实际路径列表
 
     Args:
         path_pattern: 路径模式，可能包含通配符
         parent_path: 父路径
+        exclude_patterns: 排除模式列表
 
     Returns:
         匹配的路径列表
     """
+    if exclude_patterns is None:
+        exclude_patterns = []
+
     # 如果提供了父路径，则将模式附加到父路径
     if parent_path:
         full_pattern = str(Path(parent_path) / path_pattern)
@@ -169,34 +161,41 @@ def expand_path_patterns(path_pattern: str, parent_path: str = "") -> list:
     # 将匹配的字符串路径转为 Path 对象
     matched_paths = [Path(p) for p in matched_strs]
 
-    return matched_paths
+    # 应用排除模式过滤结果
+    filtered_paths = [
+        path for path in matched_paths
+        if not should_exclude_path(path, exclude_patterns, parent_path)
+    ]
+
+    return filtered_paths
 
 
-def backup_module(module: dict, backup_root: Path, logger):
+def backup_module(module: dict, backup_root: Path, settings: dict, logger):
     """
     备份模块配置中指定的路径或脚本
 
     Args:
         module: 模块配置字典
         backup_root: 镜像根目录
+        settings: 配置设置字典
         logger: 日志记录器
     """
     module_name = module[ConfigKeys.MOD_NAME]
-
+    logger.info(f"正在备份模块: {module_name}")
     if ConfigKeys.MOD_SCRIPT in module:
         # 使用脚本备份
         script_rel = module[ConfigKeys.MOD_SCRIPT]
-        logger.info(f"[模块备份] 正在使用脚本备份模块: {module_name}")
-        success = run_backup_script(script_rel, backup_root, logger)
-        if not success:
-            logger.error(f"[模块备份失败] 模块: {module_name}")
-    elif ConfigKeys.MOD_PATHS in module:
+        run_backup_script(script_rel, settings, logger)
+    elif ConfigKeys.MOD_INCLUDE_PATHS in module:
         # 使用路径备份
         parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
 
-        for path_str in module[ConfigKeys.MOD_PATHS]:
-            # 展开可能的通配符路径
-            expanded_paths = expand_path_patterns(path_str, parent_path)
+        # 获取排除路径模式
+        exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+
+        for path_str in module[ConfigKeys.MOD_INCLUDE_PATHS]:
+            # 展开可能的通配符路径，同时应用排除规则
+            expanded_paths = expand_path_patterns(path_str, parent_path, exclude_patterns)
 
             if not expanded_paths:
                 logger.warning(f"[路径模式无匹配] 路径模式未匹配到任何文件: {path_str}")

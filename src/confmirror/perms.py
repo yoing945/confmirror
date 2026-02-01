@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 import click
 
-from confmirror.utils import get_backup_path_str
+from confmirror.utils import get_backup_path_str, should_exclude_path
 
 from .config import APP_NAME, ConfigKeys, load_config
 from .meta import read_meta
@@ -41,14 +41,19 @@ def get_perms_for_module(module_name: str, config: Dict) -> List[Dict]:
         click.echo(f"脚本钩子模块 '{module_name}'不支持查看权限 ")
         return []
 
-    elif ConfigKeys.MOD_PATHS in target_module:
+    elif ConfigKeys.MOD_INCLUDE_PATHS in target_module:
         parent_path = target_module.get(ConfigKeys.MOD_PARENT_PATH, "")
+        exclude_patterns = target_module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
 
-        for path_str in target_module[ConfigKeys.MOD_PATHS]:
+        for path_str in target_module[ConfigKeys.MOD_INCLUDE_PATHS]:
             if parent_path:
                 path = Path(parent_path) / path_str
             else:
                 path = Path(path_str)
+
+            # 检查路径是否应该被排除
+            if should_exclude_path(path, exclude_patterns, parent_path):
+                continue  # 跳过被排除的路径
 
             # 查找对应的元数据文件
             perms_info.extend(_get_perms_for_path_recursive(backup_root / str(path).lstrip('/')))
@@ -119,6 +124,8 @@ def _get_perms_for_path_recursive(path: Path) -> List[Dict]:
         # 检查当前路径的元数据
         meta_data = read_meta(current_path)
         if meta_data:
+            # 检查当前路径是否应该被排除
+            # 注意：这里不应用排除规则，因为我们只是在显示已备份的文件的权限
             perms_info.append({
                 'path': str(current_path),
                 'meta': meta_data
@@ -158,4 +165,3 @@ def display_perms_info(perms_list: List[Dict], config: Dict):
         click.echo(f"{display_path}")
         click.echo(f"  Type: {type_str}, Mode: {mode}, Owner: {uid}:{gid}")
         click.echo()
-            

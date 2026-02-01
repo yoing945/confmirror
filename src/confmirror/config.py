@@ -22,7 +22,8 @@ class ConfigKeys:
 
     # 模块键
     MOD_NAME = "name"
-    MOD_PATHS = "paths"
+    MOD_INCLUDE_PATHS = "include_paths"
+    MOD_EXCLUDE_PATHS = "exclude_paths"
     MOD_SCRIPT = "script"
     MOD_PARENT_PATH = "parent_path"
 
@@ -73,6 +74,8 @@ def load_config() -> dict:
         config[ConfigKeys.SECTION_MODULES] = modules
     else:
         modules = modules_raw
+
+    # 标准化模块中的 parent_path 为绝对路径
     for i, mod in enumerate(modules):
         if not isinstance(mod, dict):
             logger.error(f"{ConfigKeys.SECTION_MODULES}[{i}] 必须是映射")
@@ -80,5 +83,15 @@ def load_config() -> dict:
         if ConfigKeys.MOD_NAME not in mod:
             logger.error(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
             return {}
+
+        # 如果模块中有 parent_path，则将其转换为绝对路径
+        if ConfigKeys.MOD_PARENT_PATH in mod:
+            parent_path = mod[ConfigKeys.MOD_PARENT_PATH]
+            if parent_path:
+                parent_path_path = Path(parent_path)
+                # 如果是相对路径，则相对于当前工作目录转换为绝对路径
+                if not parent_path_path.is_absolute():
+                    parent_path_path = Path.cwd() / parent_path_path
+                mod[ConfigKeys.MOD_PARENT_PATH] = str(parent_path_path.resolve())
 
     return config
