@@ -4,11 +4,67 @@ import subprocess
 import glob
 import fnmatch
 from pathlib import Path
+from typing import Optional
 
 from confmirror.config import ConfigKeys
-from confmirror.utils import should_exclude_path
+from confmirror.utils import should_exclude_path, find_matching_module_with_path
 
 from .meta import write_meta
+
+
+def execute_backup(config: dict, logger, target_module_name: Optional[str] = None, target_path: Optional[str] = None) -> None:
+    """
+    执行备份操作
+
+    Args:
+        config: 配置字典
+        logger: 日志记录器
+        target_module_name: 指定要备份的模块名称
+        target_path: 指定要备份的路径
+    """
+    settings = config[ConfigKeys.SECTION_SETTINGS]
+    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+
+    # 确保备份根目录存在
+    backup_root.mkdir(parents=True, exist_ok=True)
+
+    if target_module_name:
+        # 分模块备份
+        modules = config.get(ConfigKeys.SECTION_MODULES, [])
+        found_module = next((mod for mod in modules if mod[ConfigKeys.MOD_NAME] == target_module_name), None)
+        if not found_module:
+            logger.error(f"找不到模块: '{target_module_name}' ")
+            return
+        backup_module(found_module, backup_root, settings, logger)
+
+    elif target_path:
+        module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
+        if not module:
+            logger.error(f"路径 '{target_path}' 不属于任何模块，无法备份")
+            return
+        # 获取排除路径模式和父路径
+        all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+        parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+        if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
+            return  
+        # 展开可能的通配符路径，并应用排除规则                              
+        expanded_paths = expand_path_patterns(target_path, "", all_exclude_patterns)
+
+        if not expanded_paths:
+            logger.warning(f"路径模式未匹配到任何文件: {target_path}")
+            return
+
+        # 对每个匹配的路径进行备份
+        for path in expanded_paths:
+            # 检查路径是否在当前模块的排除列表中
+            if should_exclude_path(path, all_exclude_patterns, parent_path):
+                logger.info(f"[路径被排除] 跳过备份: {path}")
+                continue
+            backup_single_path(path, backup_root, logger)
+    else:
+        # 全量备份
+        for module in config.get(ConfigKeys.SECTION_MODULES, []):
+            backup_module(module, backup_root, settings, logger)
 
 def _backup_directory(src_dir: Path, dest_dir: Path, logger):
     """

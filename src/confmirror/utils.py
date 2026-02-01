@@ -1,7 +1,7 @@
 
 import fnmatch
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from confmirror.config import ConfigKeys
 
@@ -58,3 +58,27 @@ def get_backup_path_str(config:Dict, full_path)->str:
         # 如果path不在backup_root下，则使用原始路径
         display_path = full_path
     return display_path
+
+
+def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
+    """
+    查找包含指定路径的模块
+
+    Args:
+        modules: 模块配置列表
+        path: 要查找的路径
+
+    Returns:
+        包含该路径的模块配置字典，如果未找到则返回None
+    """
+    for module in modules:
+        if ConfigKeys.MOD_INCLUDE_PATHS in module:
+            parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+            for path_str in module[ConfigKeys.MOD_INCLUDE_PATHS]:
+                if parent_path:
+                    module_path = Path(parent_path) / path_str
+                else:
+                    module_path = Path(path_str)
+                if path.is_relative_to(module_path):
+                    return module
+    return None
