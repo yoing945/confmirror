@@ -45,11 +45,20 @@ def backup(module, target_paths):
             logger.info(f"正在执行模块备份: {module}")
             execute_backup(config, logger, target_module_name=module)
         elif target_paths:
+            # 如果target_paths长度>1，日志只输出前1个，后续用...代替
+            log_str = target_paths[0]
+            if len(target_paths) > 1:
+                log_str += f", ..."
+            logger.info(f"开始执行路径备份: {log_str}")
             # 指定路径备份 - 支持多个路径
             for target_path in target_paths:
-                logger.info(f"开始执行路径备份: {target_path}")
                 execute_backup(config, logger, target_path=target_path)
         else:
+            confirm = click.prompt("正在进行全量备份, y/n?", type=str)
+            confirm = confirm.strip().lower()
+            if confirm != 'y' and confirm != 'yes':
+                click.echo("全量备份已取消")
+                return
             # 全量备份
             logger.info("开始执行全量备份")
             execute_backup(config, logger)
@@ -71,7 +80,9 @@ def backup(module, target_paths):
         sys.exit(1)
 
 @main.command()
-def restore():
+@click.option('-m', '--module', type=str, help='指定要恢复的模块名称')
+@click.argument('target_paths', nargs=-1, type=str)
+def restore(module, target_paths):
     # 恢复
     try:
         config = load_config()
@@ -85,18 +96,32 @@ def restore():
         log_dir = settings[ConfigKeys.LOG_DIR]
         name = settings[ConfigKeys.NAME]
         logger = setup_logger(log_dir, name)
-        logger.info("开始执行恢复任务")
-        execute_restore(config, logger)
-        logger.info("✅ 恢复成功完成")
+
+        # 根据参数决定恢复方式
+        if module:
+            # 分模块恢复
+            logger.info(f"正在执行模块恢复: {module}")
+            execute_restore(config, logger, target_module_name=module)
+        elif target_paths:
+            log_str = target_paths[0]
+            if len(target_paths) > 1:
+                log_str += f", ..."
+            logger.info(f"开始执行路径恢复: {log_str}")
+            for target_path in target_paths:
+                execute_restore(config, logger, target_path=target_path)
+        else:
+            # 全量恢复需要二次确认
+            confirm = click.prompt("⚠️  正在进行全量恢复操作，这会覆盖所有备份关联的系统配置文件。\n输入 'YES' 确认继续", type=str)
+            if confirm != 'YES':
+                click.echo("全量恢复已取消")
+                return
+            logger.info("开始执行全量恢复")
+            execute_restore(config, logger)
+
+        logger.info("✅ 恢复完成")
     except Exception as e:
-        # 记录详细的错误信息和堆栈跟踪到日志（始终记录）
-        logger = logging.getLogger("confmirror")
-        logger.error(f"❌ 恢复失败: {e}")
-        logger.error(f"详细错误信息:\n{traceback.format_exc()}")
-
-        # 在控制台输出基本信息
-        click.echo(f"❌ 恢复失败: {e}", err=True)
-
+        logger = logging.getLogger(APP_NAME)
+        logger.error(traceback.format_exc())
         sys.exit(1)
 
 @main.command()

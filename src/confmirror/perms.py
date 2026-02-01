@@ -9,7 +9,7 @@ import click
 
 from confmirror.utils import find_matching_module_with_path, get_backup_path_str, should_exclude_path
 
-from .config import APP_NAME, ConfigKeys, load_config
+from .config import ConfigKeys
 from .meta import read_meta
 
 
@@ -39,15 +39,6 @@ def execute_perms(config: Dict, logger, target_module_name: Optional[str] = None
             return
         perms_info = get_perms_for_path(config, target_path)
         display_perms_info(perms_info, config)
-    else:
-        # 没有参数，列出所有模块
-        modules = config.get(ConfigKeys.SECTION_MODULES, [])
-        if modules:
-            click.echo("可用的模块:")
-            for mod in modules:
-                click.echo(f"  - {mod[ConfigKeys.MOD_NAME]}")
-        else:
-            click.echo("没有找到任何模块")
 
 
 def get_perms_for_module(module_name: str, config: Dict) -> List[Dict]:

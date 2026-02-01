@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from confmirror.config import ConfigKeys
-from confmirror.utils import should_exclude_path, find_matching_module_with_path
+from confmirror.utils import run_shell_script, should_exclude_path, find_matching_module_with_path
 
 from .meta import write_meta
 
@@ -46,6 +46,7 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
         all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
         parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
         if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
+            logger.info(f"路径 '{target_path}' 被排除，跳过备份")
             return  
         # 展开可能的通配符路径，并应用排除规则                              
         expanded_paths = expand_path_patterns(target_path, "", all_exclude_patterns)
@@ -143,52 +144,6 @@ def backup_single_path(src: Path, mirror_root: Path, logger):
         # 对于目录，只备份目录本身（不递归内容）
         _backup_directory(src, dest, logger)
 
-def run_backup_script(script_rel: str, settings: dict, logger):
-    """
-    执行备份脚本
-
-    Args:
-        script_rel: 脚本相对路径
-        settings: 配置设置字典
-        logger: 日志记录器
-
-    Returns:
-        bool: 脚本执行成功返回True，否则返回False
-    """
-    script_hooks_dir = Path(settings[ConfigKeys.SCRIPT_HOOKS_DIR])
-    script = script_hooks_dir / script_rel
-    if not script.exists():
-        logger.error(f"[脚本备份失败] → 脚本不存在 {script}")
-        return False
-
-    try:
-        # 确保脚本有执行权限
-        script.chmod(0o755)
-        logger.info(f"[脚本备份执行] → 运行脚本 {script}")
-
-        # 执行脚本，传入"backup"参数
-        result = subprocess.run(
-            [str(script), "backup"],
-            check=True,
-            cwd=Path(settings[ConfigKeys.SCRIPT_HOOKS_DIR]).parent,  # 使用备份根目录作为工作目录
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-
-        logger.info(f"[脚本备份成功] → 脚本执行完成")
-        if result.stdout:
-            logger.debug(f"[脚本输出] {result.stdout}")
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"[脚本备份失败] → 脚本执行异常: {e}")
-        if e.stderr:
-            logger.error(f"[脚本错误输出] {e.stderr}")
-        return False
-    except Exception as e:
-        logger.error(f"[脚本执行异常] → : {str(e)}")
-        return False
-
 def expand_path_patterns(path_pattern: str, parent_path: str = "", exclude_patterns: list = []) -> list:
     """
     展开通配符路径模式为实际路径列表
@@ -241,7 +196,7 @@ def backup_module(module: dict, backup_root: Path, settings: dict, logger):
     if ConfigKeys.MOD_SCRIPT in module:
         # 使用脚本备份
         script_rel = module[ConfigKeys.MOD_SCRIPT]
-        run_backup_script(script_rel, settings, logger)
+        run_shell_script(script_rel, settings, logger, "backup")
     elif ConfigKeys.MOD_INCLUDE_PATHS in module:
         # 使用路径备份
         parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")

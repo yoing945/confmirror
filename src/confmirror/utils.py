@@ -1,6 +1,7 @@
 
 import fnmatch
 from pathlib import Path
+import subprocess
 from typing import Dict, Optional
 
 from confmirror.config import ConfigKeys
@@ -82,3 +83,39 @@ def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
                 if path.is_relative_to(module_path):
                     return module
     return None
+
+
+def run_shell_script(script_rel: str, settings: dict, logger, action: str) -> bool:
+    """
+    执行shell脚本
+
+    Args:
+        script_rel: 脚本相对路径
+        settings: 配置设置字典
+        logger: 日志记录器
+
+    Returns:
+        bool: 脚本执行成功返回True，否则返回False
+    """
+    script_hooks_dir = Path(settings[ConfigKeys.SCRIPT_HOOKS_DIR])
+    script = script_hooks_dir / script_rel
+    if not script.exists():
+        logger.error(f"脚本不存在 {script}")
+        return False
+
+    logger.info(f"执行脚本: {script}")
+    try:
+        # 不捕获输出，直接显示在终端
+        result = subprocess.run(
+            ['bash', str(script), action],
+            cwd=script.parent,  # 使用脚本所在目录作为工作目录
+            check=True
+        )
+        logger.info(f"脚本执行完成")
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"脚本执行异常: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"脚本执行异常: {str(e)}")
+        return False
