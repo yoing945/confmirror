@@ -9,6 +9,7 @@ from .config import APP_NAME, ConfigKeys, load_config
 from .backup import execute_backup
 from .restore import execute_restore
 from .perms import execute_perms
+from .list import execute_list
 from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
 
@@ -132,4 +133,31 @@ def perms(module, target_paths):
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
         click.echo(f"❌ 查看权限信息失败: {e}", err=True)
+        sys.exit(1)
+
+@main.command()
+@click.option('-m', '--module', type=str, help='列出指定模块的信息')
+@click.option('-d', '--detail', is_flag=True, help='输出模块的详细信息')
+def ls(module, detail):
+    """列出所有可用模块"""
+    try:
+        config = load_config()
+
+        # 检查配置是否加载成功
+        if not config:
+            click.echo("❌ 配置加载失败，无法列出模块", err=True)
+            sys.exit(1)
+
+        settings:dict = config[ConfigKeys.SECTION_SETTINGS]
+        log_dir = settings[ConfigKeys.LOG_DIR]
+        name = settings[ConfigKeys.NAME]
+        logger = setup_logger(log_dir, name)
+
+        # 列出所有模块或指定模块
+        execute_list(config, module_name=module, detail=detail)
+
+    except Exception as e:
+        logger = logging.getLogger(APP_NAME)
+        logger.error(traceback.format_exc())
+        click.echo(f"❌ 列出模块失败: {e}", err=True)
         sys.exit(1)
