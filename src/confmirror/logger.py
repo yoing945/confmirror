@@ -1,10 +1,13 @@
 # src/confmirror/logger.py
 
 import logging
+import os
 from pathlib import Path
+from datetime import datetime
 
-from confmirror.config import APP_NAME
+from confmirror.config import APP_NAME, ConfigKeys
 
+DEFAULT_LOG_MAX_LINES = 1000
 
 class ColoredFormatter(logging.Formatter):
     """自定义颜色格式化器"""
@@ -28,8 +31,6 @@ class ColoredFormatter(logging.Formatter):
         msg_color = self.COLORS.get(record.levelname
                                     .replace('\033[31mERROR\033[0m', 'ERROR')
                                     .replace('\033[33mWARNING\033[0m', 'WARNING')
-                                    #.replace('\033[32mINFO\033[0m', 'INFO')
-                                    #.replace('\033[36mDEBUG\033[0m', 'DEBUG')
                                     .replace('\033[35mCRITICAL\033[0m', 'CRITICAL'), self.COLORS['RESET'])
         original_msg = record.msg
         record.msg = f"{msg_color}{original_msg}{self.COLORS['RESET']}"
@@ -43,8 +44,36 @@ class ColoredFormatter(logging.Formatter):
         return formatted
 
 
-def setup_logger(log_dir: Path, config_name: str) -> logging.Logger:
-    # 检查 log_dir 是否包含文件名还是只是目录
+def rotate_log_file(log_file: Path, max_lines: int):
+    """
+    轮转日志文件，保留最近 max_lines 行
+
+    Args:
+        log_file: 日志文件路径
+        max_lines: 最大保留行数
+    """
+    if not log_file.exists():
+        return
+
+    # 读取所有行
+    with open(log_file, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+
+    # 如果行数超过限制，进行轮转
+    if len(lines) > max_lines:
+        # 保留最近的 max_lines 行
+        kept_lines = lines[-max_lines:]
+
+        # 写入保留的行
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.writelines(kept_lines)
+
+
+def setup_logger(config: dict) -> logging.Logger:
+    settings = config[ConfigKeys.SECTION_SETTINGS]
+    log_dir = settings[ConfigKeys.LOG_DIR]
+    config_name = settings[ConfigKeys.NAME]
+    max_lines = settings.get(ConfigKeys.LOG_MAX_LINES, DEFAULT_LOG_MAX_LINES)
     log_path = Path(log_dir)
     if log_path.suffix:  # 如果有后缀，说明指定了文件名
         log_file = log_path.resolve()
@@ -59,6 +88,9 @@ def setup_logger(log_dir: Path, config_name: str) -> logging.Logger:
         else:
             # 使用默认日志文件名
             log_file = log_path / "log.log"
+
+    # 启动时进行日志轮转检查
+    rotate_log_file(log_file, max_lines)
 
     logger = logging.getLogger(APP_NAME)
     logger.setLevel(logging.DEBUG)

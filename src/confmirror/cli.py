@@ -10,19 +10,22 @@ from .backup import execute_backup
 from .restore import execute_restore
 from .perms import execute_perms
 from .list import execute_list
+from .diff import execute_diff, batch_diff_module
 from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
 
 
 @click.group()
 def main():
+    """ConfMirror - 系统配置文件备份与恢复工具"""
     pass
 
 @main.command()
 @click.option('-m', '--module', type=str, help='指定要备份的模块名称')
+@click.option('-o', '--override', is_flag=True, help='强制覆盖备份模式')
 @click.argument('target_paths', nargs=-1, type=str)
-def backup(module, target_paths):
-    # 备份
+def backup(module, override, target_paths):
+    """执行备份操作"""
     try:
         # 加载配置文件
         config = load_config()
@@ -33,17 +36,20 @@ def backup(module, target_paths):
             sys.exit(1)
 
         settings:dict = config[ConfigKeys.SECTION_SETTINGS]
-        log_dir = settings[ConfigKeys.LOG_DIR]
         name = settings[ConfigKeys.NAME]
-        logger = setup_logger(log_dir, name)
+
+        logger = setup_logger(config)
         backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
         logger.info(f"开始执行备份，镜像目录: {backup_root}")
+
+        if override:
+            logger.info("⚠️  已启用强制覆盖备份模式")
 
         # 根据参数决定备份方式
         if module:
             # 分模块备份
             logger.info(f"正在执行模块备份: {module}")
-            execute_backup(config, logger, target_module_name=module)
+            execute_backup(config, logger, target_module_name=module, override=override)
         elif target_paths:
             # 如果target_paths长度>1，日志只输出前1个，后续用...代替
             log_str = target_paths[0]
@@ -52,7 +58,7 @@ def backup(module, target_paths):
             logger.info(f"开始执行路径备份: {log_str}")
             # 指定路径备份 - 支持多个路径
             for target_path in target_paths:
-                execute_backup(config, logger, target_path=target_path)
+                execute_backup(config, logger, target_path=target_path, override=override)
         else:
             confirm = click.prompt("正在进行全量备份, y/n?", type=str)
             confirm = confirm.strip().lower()
@@ -61,7 +67,7 @@ def backup(module, target_paths):
                 return
             # 全量备份
             logger.info("开始执行全量备份")
-            execute_backup(config, logger)
+            execute_backup(config, logger, override=override)
 
         if settings.get(ConfigKeys.GIT_AUTO_COMMIT):
             msg = f"confmirror 备份: {name}"
@@ -76,14 +82,13 @@ def backup(module, target_paths):
     except Exception as e:
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
-
         sys.exit(1)
 
 @main.command()
 @click.option('-m', '--module', type=str, help='指定要恢复的模块名称')
 @click.argument('target_paths', nargs=-1, type=str)
 def restore(module, target_paths):
-    # 恢复
+    """执行恢复操作"""
     try:
         config = load_config()
 
@@ -92,10 +97,7 @@ def restore(module, target_paths):
             click.echo("❌ 配置加载失败，无法执行恢复任务", err=True)
             sys.exit(1)
 
-        settings:dict = config[ConfigKeys.SECTION_SETTINGS]
-        log_dir = settings[ConfigKeys.LOG_DIR]
-        name = settings[ConfigKeys.NAME]
-        logger = setup_logger(log_dir, name)
+        logger = setup_logger(config)
 
         # 根据参数决定恢复方式
         if module:
@@ -137,10 +139,7 @@ def perms(module, target_paths):
             click.echo("❌ 配置加载失败，无法查看权限信息", err=True)
             sys.exit(1)
 
-        settings:dict = config[ConfigKeys.SECTION_SETTINGS]
-        log_dir = settings[ConfigKeys.LOG_DIR]
-        name = settings[ConfigKeys.NAME]
-        logger = setup_logger(log_dir, name)
+        logger = setup_logger(config)
 
         # 根据参数决定权限查看方式
         if module:
@@ -173,10 +172,7 @@ def ls(module, detail):
             click.echo("❌ 配置加载失败，无法列出模块", err=True)
             sys.exit(1)
 
-        settings:dict = config[ConfigKeys.SECTION_SETTINGS]
-        log_dir = settings[ConfigKeys.LOG_DIR]
-        name = settings[ConfigKeys.NAME]
-        logger = setup_logger(log_dir, name)
+        logger = setup_logger(config)
 
         # 列出所有模块或指定模块
         execute_list(config, module_name=module, detail=detail)
@@ -186,3 +182,39 @@ def ls(module, detail):
         logger.error(traceback.format_exc())
         click.echo(f"❌ 列出模块失败: {e}", err=True)
         sys.exit(1)
+
+
+@main.command()
+@click.option('-m', '--module', type=str, help='对比整个模块的所有文件')
+@click.argument('target_paths', nargs=-1, type=str)
+def diff(module, target_paths):
+    """对比源文件与备份文件的差异"""
+    try:
+        config = load_config()
+
+        if not config:
+            click.echo("❌ 配置加载失败", err=True)
+            sys.exit(1)
+
+        logger = setup_logger(config)
+
+        # 根据参数决定差异对比方式
+        if module:
+            # 对比整个模块
+            batch_diff_module(config, logger, module)
+        elif target_paths:
+            # 指定路径对比差异 - 支持多个路径
+            for target_path in target_paths:
+                execute_diff(config, logger, target_path)
+        else:
+            click.echo("⚠️  需要指定模块或路径。")
+
+    except Exception as e:
+        logger = logging.getLogger(APP_NAME)
+        logger.error(traceback.format_exc())
+        click.echo(f"❌ 差异对比失败: {e}", err=True)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()

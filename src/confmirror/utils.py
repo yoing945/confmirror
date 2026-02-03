@@ -1,7 +1,7 @@
-
 import fnmatch
 from pathlib import Path
 import subprocess
+import sys
 from typing import Dict, Optional
 
 from confmirror.config import ConfigKeys
@@ -87,12 +87,30 @@ def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
 
 def run_shell_script(script_rel: str, settings: dict, logger, action: str) -> bool:
     """
-    执行shell脚本
+    执行shell脚本（向后兼容）
 
     Args:
         script_rel: 脚本相对路径
         settings: 配置设置字典
         logger: 日志记录器
+        action: 操作类型（backup/restore）
+
+    Returns:
+        bool: 脚本执行成功返回True，否则返回False
+    """
+    return run_script(script_rel, settings, logger, action, script_lang="bash")
+
+
+def run_script(script_rel: str, settings: dict, logger, action: str, script_lang: str = "bash") -> bool:
+    """
+    执行脚本，支持多种脚本语言
+
+    Args:
+        script_rel: 脚本相对路径
+        settings: 配置设置字典
+        logger: 日志记录器
+        action: 操作类型（backup/restore）
+        script_lang: 脚本语言（bash/python/python3/ruby/node等）
 
     Returns:
         bool: 脚本执行成功返回True，否则返回False
@@ -103,19 +121,90 @@ def run_shell_script(script_rel: str, settings: dict, logger, action: str) -> bo
         logger.error(f"脚本不存在 {script}")
         return False
 
-    logger.info(f"执行脚本: {script}")
+    # 根据脚本语言确定解释器和执行方式
+    interpreters = {
+        "bash": ["bash"],
+        "sh": ["sh"],
+        "python": [sys.executable],  # 使用当前Python解释器
+        "python3": ["python3"],
+        "python2": ["python2"],
+        "ruby": ["ruby"],
+        "node": ["node"],
+        "nodejs": ["node"],
+        "perl": ["perl"],
+        "php": ["php"],
+    }
+
+    # 如果script_lang是路径（如/usr/bin/python3），直接使用
+    if Path(script_lang).exists() or "/" in script_lang:
+        cmd = [script_lang]
+    elif script_lang.lower() in interpreters:
+        cmd = interpreters[script_lang.lower()]
+    else:
+        # 尝试作为命令直接使用
+        cmd = [script_lang]
+
+    cmd.append(str(script))
+    cmd.append(action)
+
+    logger.info(f"执行脚本 [{script_lang}]: {script}")
     try:
-        # 不捕获输出，直接显示在终端
         result = subprocess.run(
-            ['bash', str(script), action],
-            cwd=script.parent,  # 使用脚本所在目录作为工作目录
-            check=True
+            cmd,
+            # 指定脚本所在目录为工作目录
+            cwd=script.parent,
+            check=True,
+            # 直接输出到终端
+            capture_output=False,  
+            text=True
         )
         logger.info(f"脚本执行完成")
         return True
     except subprocess.CalledProcessError as e:
-        logger.error(f"脚本执行异常: {e}")
+        logger.error(f"脚本执行异常，返回码: {e.returncode}")
+        return False
+    except FileNotFoundError:
+        logger.error(f"找不到解释器 '{script_lang}'，请确保已安装")
         return False
     except Exception as e:
         logger.error(f"脚本执行异常: {str(e)}")
         return False
+
+
+def get_script_shebang(script_path: Path) -> Optional[str]:
+    """
+    读取脚本的shebang行来自动检测脚本语言
+
+    Args:
+        script_path: 脚本路径
+
+    Returns:
+        str: 检测到的语言或None
+    """
+    try:
+        with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
+            first_line = f.readline().strip()
+            if first_line.startswith('#!'):
+                # 解析shebang
+                shebang = first_line[2:].strip()
+                # 提取解释器名称
+                if 'python3' in shebang:
+                    return 'python3'
+                elif 'python' in shebang:
+                    return 'python'
+                elif 'bash' in shebang:
+                    return 'bash'
+                elif 'sh' in shebang:
+                    return 'sh'
+                elif 'ruby' in shebang:
+                    return 'ruby'
+                elif 'node' in shebang:
+                    return 'node'
+                elif 'perl' in shebang:
+                    return 'perl'
+                else:
+                    # 返回完整路径
+                    return shebang.split()[-1]
+    except Exception:
+        pass
+    return None

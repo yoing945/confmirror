@@ -19,6 +19,7 @@ class ConfigKeys:
     LOG_DIR = "log_dir"
     GIT_AUTO_COMMIT = "git_auto_commit"
     GIT_AUTO_PUSH = "git_auto_push"
+    LOG_MAX_LINES = "log_max_lines"
 
     # 模块键
     MOD_NAME = "name"
@@ -26,6 +27,7 @@ class ConfigKeys:
     MOD_EXCLUDE_PATHS = "exclude_paths"
     MOD_SCRIPT = "script"
     MOD_PARENT_PATH = "parent_path"
+    MOD_SCRIPT_LANG = "script_lang"
 
 
 def load_config() -> dict:
@@ -60,6 +62,7 @@ def load_config() -> dict:
     settings.setdefault(ConfigKeys.LOG_DIR, "./logs")
     settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
     settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
+    settings.setdefault(ConfigKeys.LOG_MAX_LINES, 1000)  # 默认1000行
 
     # 路径标准化（相对于当前工作目录）
     base = Path.cwd()
@@ -93,5 +96,9 @@ def load_config() -> dict:
                 if not parent_path_path.is_absolute():
                     parent_path_path = Path.cwd() / parent_path_path
                 mod[ConfigKeys.MOD_PARENT_PATH] = str(parent_path_path.resolve())
+
+        # 设置默认脚本语言
+        if ConfigKeys.MOD_SCRIPT in mod:
+            mod.setdefault(ConfigKeys.MOD_SCRIPT_LANG, "bash")
 
     return config
