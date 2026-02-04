@@ -235,7 +235,7 @@ def print_line(logger, count: int = 100) -> None:
     """
     logger.info(f"{'-' * count}")
 
-def compare_files_set(source_files_set: set, backup_files_set: set, logger, backup_root: Path) -> None:
+def compare_files_set(source_files_set: set, backup_files_set: set, logger, backup_root: Path, detail: bool = False) -> None:
     # 计算新增、删除和修改的文件
     added_files = source_files_set - backup_files_set  # 源中有但备份中没有
     deleted_files = backup_files_set - source_files_set  # 备份中有但源中没有
@@ -259,7 +259,7 @@ def compare_files_set(source_files_set: set, backup_files_set: set, logger, back
 
         if source_file.exists() and backup_file.exists():
             # 调用改进后的compare_files函数，该函数会检查内容和元数据
-            if not compare_files(source_file, backup_file, logger):
+            if not compare_files(source_file, backup_file, logger, show_content_diff=detail):
                 diff_files += 1
             print_line(logger)
 
@@ -267,14 +267,15 @@ def compare_files_set(source_files_set: set, backup_files_set: set, logger, back
                 f"{len(added_files)}个新增, {len(deleted_files)}个缺失")
 
 
-def diff_paths(config: dict, logger, target_paths: List[str]) -> None:
+def diff_paths(config: dict, logger, target_paths: List[str], detail: bool = False) -> None:
     """
     对比指定路径下的所有文件与备份目录中的差异
 
     Args:
         config: 配置字典
         logger: 日志记录器
-        target_path: 目标路径（原始系统路径）
+        target_paths: 目标路径列表（原始系统路径）
+        detail: 是否显示详细内容差异
     """
     settings = config[ConfigKeys.SECTION_SETTINGS]
     backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
@@ -316,10 +317,10 @@ def diff_paths(config: dict, logger, target_paths: List[str]) -> None:
             # 将相对路径添加到集合中（相对于根目录）
             backup_files_set.add(Path('/') / backup_path.relative_to(backup_root))
 
-    compare_files_set(source_files_set, backup_files_set, logger, backup_root)
+    compare_files_set(source_files_set, backup_files_set, logger, backup_root, detail)
 
 
-def diff_module(config: dict, logger, module_name: str) -> None:
+def diff_module(config: dict, logger, module_name: str, detail: bool = False) -> None:
     """
     对比整个模块的所有文件
 
@@ -327,6 +328,7 @@ def diff_module(config: dict, logger, module_name: str) -> None:
         config: 配置字典
         logger: 日志记录器
         module_name: 模块名称
+        detail: 是否显示详细内容差异
     """
     settings = config[ConfigKeys.SECTION_SETTINGS]
     backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
@@ -399,5 +401,5 @@ def diff_module(config: dict, logger, module_name: str) -> None:
             if backup_path.exists():
                 backup_files_set.add(backup_path)
 
-    compare_files_set(source_files_set, backup_files_set, logger, backup_root)
+    compare_files_set(source_files_set, backup_files_set, logger, backup_root, detail)
 

@@ -186,8 +186,9 @@ def ls(module, detail):
 
 @main.command()
 @click.option('-m', '--module', type=str, help='对比整个模块的所有文件')
+@click.option('-d', '--detail', is_flag=True, help='输出详细的文件内容差异')
 @click.argument('target_paths', nargs=-1, type=str)
-def diff(module, target_paths):
+def diff(module, detail, target_paths):
     """对比源文件与备份文件的差异"""
     try:
         config = load_config()
@@ -201,9 +202,9 @@ def diff(module, target_paths):
         # 根据参数决定差异对比方式
         if module:
             # 对比整个模块
-            diff_module(config, logger, module)
+            diff_module(config, logger, module, detail)
         elif target_paths:
-            diff_paths(config, logger, target_paths)
+            diff_paths(config, logger, target_paths, detail)
         else:
             click.echo("⚠️  需要指定模块或路径。")
 
