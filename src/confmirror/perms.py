@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import click
 
-from confmirror.utils import find_matching_module_with_path, get_backup_path_str, should_exclude_path
+from confmirror.utils import find_matching_module_with_path, get_src_path_from_backup_full_path, should_exclude_path
 
 from .config import ConfigKeys
 from .meta import read_meta
@@ -143,14 +143,26 @@ def display_perms_info(perms_list: List[Dict], config: Dict):
         return
 
     for info in perms_list:
+        
         path = info['path']
-        meta = info['meta']
+        source_path = get_src_path_from_backup_full_path(config, path)
+        # 检查源文件是否存在并显示其权限
+        if source_path.exists():
+            source_stat = source_path.stat()
+            source_mode = oct(source_stat.st_mode)[-3:]
+            source_uid = source_stat.st_uid
+            source_gid = source_stat.st_gid
+            click.echo(f"源文件: {source_path}")
+            click.echo(f"  类型: {'dir' if source_path.is_dir() else 'file'}, 权限: {source_mode}, 所有者: {source_uid}:{source_gid}")
+        else:
+            click.echo(f"⚠️  源文件: {source_path} (不存在)")
 
-        display_path = get_backup_path_str(config, path)
+        meta = info['meta']
         type_str = meta.get('type', 'unknown')
         mode = meta.get('mode', 'unknown')
         uid = meta.get('uid', 'unknown')
         gid = meta.get('gid', 'unknown')
 
-        click.echo(f"{display_path}")
-        click.echo(f"  Type: {type_str}, Mode: {mode}, Owner: {uid}:{gid}")
+        click.echo(f"备份文件: {path}")
+        click.echo(f"  类型: {type_str}, 权限: {mode}, 所有者: {uid}:{gid}")
+

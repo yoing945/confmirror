@@ -40,25 +40,24 @@ def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "
     return False
 
 
-def get_backup_path_str(config:Dict, full_path)->str:
+def get_src_path_from_backup_full_path(config:Dict, full_path_str:str)->Path:
     """
-    获取用于显示的备份文件路径字符串
+    通过备份文件的完整路径获取对应的源文件路径字符串
 
     Args:
         config: 配置文件
-        full_path: 备份文件的完整路径
+        full_path_str: 备份文件的完整路径
     """
     settings = config[ConfigKeys.SECTION_SETTINGS]
     backup_root = settings[ConfigKeys.BACKUP_ROOT]
     # 将绝对路径转换为相对备份路径
     # 将path转换为相对于备份根目录的路径
     try:
-        rel_path = Path(full_path).relative_to(backup_root)
-        display_path = f"(bak) /{rel_path}"
+        src_path = Path('/') / Path(full_path_str).relative_to(backup_root)
     except ValueError:
         # 如果path不在backup_root下，则使用原始路径
-        display_path = full_path
-    return display_path
+        src_path = Path(full_path_str)
+    return src_path
 
 
 def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
