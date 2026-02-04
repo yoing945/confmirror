@@ -10,7 +10,7 @@ from .backup import execute_backup
 from .restore import execute_restore
 from .perms import execute_perms
 from .list import execute_list
-from .diff import execute_diff, batch_diff_module
+from .diff import diff_paths, diff_module
 from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
 
@@ -201,11 +201,9 @@ def diff(module, target_paths):
         # 根据参数决定差异对比方式
         if module:
             # 对比整个模块
-            batch_diff_module(config, logger, module)
+            diff_module(config, logger, module)
         elif target_paths:
-            # 指定路径对比差异 - 支持多个路径
-            for target_path in target_paths:
-                execute_diff(config, logger, target_path)
+            diff_paths(config, logger, target_paths)
         else:
             click.echo("⚠️  需要指定模块或路径。")
 

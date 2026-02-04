@@ -4,6 +4,8 @@
 import filecmp
 import difflib
 import glob
+import fnmatch
+import os
 from pathlib import Path
 from typing import Optional, Tuple, List
 from datetime import datetime
@@ -12,45 +14,6 @@ import click
 
 from .config import ConfigKeys
 from .utils import find_matching_module_with_path, should_exclude_path
-
-
-def execute_diff(config: dict, logger, target_path: str) -> None:
-    """
-    执行差异对比操作
-
-    Args:
-        config: 配置字典
-        logger: 日志记录器
-        target_path: 目标路径（原始系统路径）
-    """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
-
-    # 使用 glob 查找所有匹配的文件（包括目录中的文件）
-    matched_files = glob.glob(str(target_path), recursive=True)
-
-    for matched_file in matched_files:
-        matched_path = Path(matched_file)
-
-        # 检查文件是否存在
-        if not matched_path.exists():
-            logger.warning(f"[源文件不存在] 跳过差异对比: {matched_path}")
-            continue
-
-        # 只处理文件，跳过目录
-        if matched_path.is_file():
-            # 确定备份文件路径
-            rel_path = matched_path.relative_to(Path('/'))
-            backup_file_path = backup_root / rel_path
-
-            if not backup_file_path.exists():
-                logger.warning(f"[备份文件不存在] 跳过差异对比: {backup_file_path}")
-                continue
-
-            # 执行对比
-            logger.info(f"正在对比: {matched_path} vs {backup_file_path}")
-            compare_files(matched_path, backup_file_path, logger)
-
 
 def compare_files(source: Path, backup: Path, logger, show_content_diff: bool = True) -> bool:
     """
@@ -142,7 +105,88 @@ def show_file_diff(source: Path, backup: Path, context_lines: int = 3) -> None:
         click.echo(f"\n   ⚠️  无法读取文件内容进行差异对比: {e}")
 
 
-def batch_diff_module(config: dict, logger, module_name: str) -> None:
+def compare_files_set(source_files_set: set, backup_files_set: set, logger, backup_root: Path) -> None:
+    # 计算新增、删除和修改的文件
+    added_files = source_files_set - backup_files_set  # 源中有但备份中没有
+    deleted_files = backup_files_set - source_files_set  # 备份中有但源中没有
+    common_files = source_files_set & backup_files_set  # 两者都有
+
+    for added_file in added_files:
+        logger.info(f"[新增源文件]: /{added_file}")
+
+    for deleted_file in deleted_files:
+        logger.info(f"[缺失源文件]: /{deleted_file}")
+
+    # 比较共同存在的文件
+    total_common_files = len(common_files)
+    diff_files = 0
+
+    for common_file in common_files:
+        source_file = Path('/') / common_file
+        backup_file = backup_root / str(common_file).lstrip('/')
+
+        if source_file.exists() and backup_file.exists():
+            if not filecmp.cmp(source_file, backup_file, shallow=False):
+                diff_files += 1
+                compare_files(source_file, backup_file, logger)
+
+    logger.info(f"对比完成: 共{total_common_files}个共同文件, {diff_files}个存在差异, "
+                f"{len(added_files)}个新增, {len(deleted_files)}个缺失")
+    
+
+def diff_paths(config: dict, logger, target_paths: List[str]) -> None:
+    """
+    对比指定路径下的所有文件与备份目录中的差异
+
+    Args:
+        config: 配置字典
+        logger: 日志记录器
+        target_path: 目标路径（原始系统路径）
+    """
+    settings = config[ConfigKeys.SECTION_SETTINGS]
+    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+
+    # 收集所有源文件路径
+    source_files_set = set()
+    # 收集该模块在备份目录中的所有文件
+    backup_files_set = set()
+    for target_path in target_paths:
+        module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
+        if not module:
+            logger.error(f"❌ 路径 '{target_path}' 不属于任何模块")
+            return
+        # 获取排除路径模式和父路径
+        all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+        parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+        if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
+            continue
+        
+        # 展开通配符
+        source_files = glob.glob(target_path, recursive=True)
+        for source_str in source_files:
+            source_path = Path(source_str)
+            # 检查是否为支持的文件类型
+            if not source_path.exists():
+                continue
+            # 将相对路径添加到集合中（相对于根目录）
+            source_files_set.add(source_path)
+
+        target_backup_path = backup_root / Path(target_path).relative_to(Path('/'))
+        backup_files = glob.glob(str(target_backup_path), recursive=True)
+        for backup_str in backup_files:
+            backup_path = Path(backup_str)
+            # 跳过.meta文件
+            if backup_path.suffix == '.meta':
+                continue
+            if not backup_path.exists():
+                continue
+            # 将相对路径添加到集合中（相对于根目录）
+            backup_files_set.add(Path('/') / backup_path.relative_to(backup_root))
+
+    compare_files_set(source_files_set, backup_files_set, logger, backup_root)
+
+
+def diff_module(config: dict, logger, module_name: str) -> None:
     """
     对比整个模块的所有文件
 
@@ -173,9 +217,8 @@ def batch_diff_module(config: dict, logger, module_name: str) -> None:
     # 获取排除路径模式
     exclude_patterns = target_module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
 
-    total_files = 0
-    diff_files = 0
-
+    # 收集所有源文件路径
+    source_files_set = set()
     for path_pattern in include_paths:
         # 构造完整路径
         if parent_path:
@@ -190,7 +233,7 @@ def batch_diff_module(config: dict, logger, module_name: str) -> None:
             source_path = Path(source_str)
 
             # 检查是否为支持的文件类型
-            if not source_path.exists() or source_path.is_dir():
+            if not source_path.exists():
                 continue
 
             # 检查路径是否在排除列表中
@@ -198,37 +241,30 @@ def batch_diff_module(config: dict, logger, module_name: str) -> None:
                 logger.info(f"[路径被排除] 跳过差异对比: {source_path}")
                 continue
 
-            # 计算备份路径
-            rel_path = source_path.relative_to(Path(parent_path) if parent_path else Path('/'))
-            backup_path = backup_root / str(rel_path).lstrip('/')
+            # 将相对路径添加到集合中（相对于根目录）
+            source_files_set.add(source_path)
+
+    # 收集该模块在备份目录中的所有文件
+    backup_files_set = set()
+    for path_pattern in include_paths:
+        # 构造备份路径模式
+        if parent_path:
+            source_pattern = Path(parent_path) / path_pattern
+        else:
+            source_pattern = Path(path_pattern)
+
+        # 展开通配符
+        backup_files = glob.glob(str(source_pattern), recursive=True)
+
+        for backup_str in backup_files:
+            backup_path = Path(backup_str)
+
+            # 跳过.meta文件
+            if backup_path.suffix == '.meta':
+                continue
 
             if backup_path.exists():
-                total_files += 1
-                if not filecmp.cmp(source_path, backup_path, shallow=False):
-                    diff_files += 1
-                    compare_files(source_path, backup_path, logger)
+                backup_files_set.add(backup_path)
 
-    logger.info(f"模块对比完成: 共{total_files}个文件, {diff_files}个存在差异")
-
-
-def quick_diff_check(source: Path, backup: Path) -> bool:
-    """
-    快速检查两个路径是否相同（用于增量备份判断）
-
-    Args:
-        source: 源路径
-        backup: 备份路径
-
-    Returns:
-        bool: 相同返回True，不同返回False
-    """
-    if not backup.exists():
-        return False
-
-    if source.is_file() and backup.is_file():
-        # 使用shallow比较（检查大小和修改时间）作为快速判断
-        return filecmp.cmp(source, backup, shallow=True)
-    elif source.is_dir() and backup.is_dir():
-        return filecmp.cmp(source, backup, shallow=True)
-
-    return False
+    compare_files_set(source_files_set, backup_files_set, logger, backup_root)
+    

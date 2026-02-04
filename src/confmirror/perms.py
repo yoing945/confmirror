@@ -30,7 +30,7 @@ def execute_perms(config: Dict, logger, target_module_name: Optional[str] = None
     elif target_path:
         module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
         if not module:
-            logger.error(f"路径 '{target_path}' 不属于任何模块，无法查看权限")
+            logger.error(f"❌ 路径 '{target_path}' 不属于任何模块")
             return
         # 获取排除路径模式和父路径
         all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
