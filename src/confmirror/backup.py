@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from confmirror.config import ConfigKeys
+from confmirror.diff import compare_meta, same_file
 from confmirror.utils import run_script, should_exclude_path, find_matching_module_with_path
 from confmirror.meta import write_meta
 import hashlib
@@ -70,87 +71,6 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
             backup_module(module, backup_root, settings, logger, override)
 
 
-def _compare_content(src: Path, dest: Path) -> bool:
-    """
-    比较两个文件的内容是否相同
-
-    Args:
-        src: 源文件路径
-        dest: 目标文件路径
-
-    Returns:
-        bool: 内容相同返回True，不同返回False
-    """
-    if not dest.exists():
-        return False  # 目标文件不存在，认为内容不同
-
-    try:
-        # 使用文件比较
-        import filecmp
-        return filecmp.cmp(src, dest, shallow=False)
-    except Exception:
-        # 如果文件比较失败，使用哈希比较
-        return _compare_files_by_hash(src, dest)
-
-
-def _compare_meta(src: Path, dest: Path) -> bool:
-    """
-    检查源文件的当前元数据（权限、UID、GID）是否与上次备份时记录的原始元数据相同
-
-    Args:
-        src: 源文件路径
-        dest: 目标文件路径（备份文件）
-
-    Returns:
-        bool: 元数据未发生变化返回True，否则返回False
-    """
-    from confmirror.meta import read_meta
-
-    # 读取备份文件的元数据（包含上次备份时的原始权限信息）
-    meta_data = read_meta(dest)
-
-    if not meta_data:
-        return False  # 没有元数据，认为元数据已变化（首次备份）
-
-    # 获取源文件的当前统计信息
-    src_stat = src.stat()
-    src_mode = oct(src_stat.st_mode)[-3:]
-    src_uid = src_stat.st_uid
-    src_gid = src_stat.st_gid
-
-    # 比较所有元数据项：权限、UID、GID
-    return (
-        src_mode == meta_data.get('mode', '') and
-        src_uid == int(meta_data.get('uid', -1)) and
-        src_gid == int(meta_data.get('gid', -1))
-    )
-
-
-def _compare_files_by_hash(src: Path, dest: Path) -> bool:
-    """
-    通过哈希值比较两个文件的内容是否相同
-
-    Args:
-        src: 源文件路径
-        dest: 目标文件路径
-
-    Returns:
-        bool: 内容相同返回True，不同返回False
-    """
-    try:
-        def get_file_hash(file_path):
-            hash_obj = hashlib.blake2b()
-            with open(file_path, 'rb') as f:
-                while chunk := f.read(8192):
-                    hash_obj.update(chunk)
-            return hash_obj.hexdigest()
-
-        return get_file_hash(src) == get_file_hash(dest)
-    except Exception:
-        # 如果哈希计算失败，认为文件不同
-        return False
-
-
 def _backup_directory(src_dir: Path, dest_dir: Path, logger, override: bool = False):
     """
     备份目录及其内容
@@ -162,7 +82,7 @@ def _backup_directory(src_dir: Path, dest_dir: Path, logger, override: bool = Fa
         override: 是否强制覆盖
     """
     # 检查是否跳过（增量备份）
-    if not override and dest_dir.exists() and _compare_meta(src_dir, dest_dir):
+    if not override and dest_dir.exists() and compare_meta(src_dir, dest_dir):
         logger.info(f"[跳过备份] 目录信息无变化: {src_dir}")
         return
 
@@ -194,7 +114,7 @@ def _backup_file(src: Path, dest: Path, logger, override: bool = False, use_hash
         use_hash: 是否使用哈希比对（增量备份时）
     """
     # 检查是否跳过（增量备份）
-    if not override and _compare_content(src, dest) and _compare_meta(src, dest):
+    if not override and same_file(src, dest):
         logger.info(f"[跳过备份] 文件信息无变化: {src}")
         return
 
