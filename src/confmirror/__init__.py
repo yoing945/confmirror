@@ -10,7 +10,12 @@ ConfMirror - 系统配置文件备份与还原工具
 - 多脚本语言支持
 """
 
-__version__ = "1.0"
+try:
+    from importlib.metadata import version
+    __version__ = version("confmirror")
+except ImportError:
+    __version__ = "1.0"
+
 __author__ = "yoing945"
 
 from .config import load_config, ConfigKeys

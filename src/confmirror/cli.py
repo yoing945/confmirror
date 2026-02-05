@@ -13,42 +13,58 @@ from .list import execute_list
 from .diff import diff_paths, diff_module
 from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
+from . import __version__
 
+
+def gen_help_option():
+    """创建一个自定义的帮助选项，支持 -h 和 --help"""
+    def show_help(ctx, param, value):
+        if value and not ctx.resilient_parsing:
+            click.echo(ctx.get_help(), color=ctx.color)
+            ctx.exit()
+    
+    return click.Option(
+        ['-h', '--help'],
+        is_flag=True,
+        expose_value=False,
+        callback=show_help,
+        help="显示帮助信息"
+    )
+
+def gen_version_option():
+    """创建一个自定义的版本选项，支持 -v 和 --version"""
+    def show_version(ctx, param, value):
+        if value and not ctx.resilient_parsing:
+            click.echo(f'v{__version__}', color=ctx.color)
+            ctx.exit()
+    
+    return click.Option(
+        ['-v', '--version'],
+        is_flag=True,
+        expose_value=False,
+        callback=show_version,
+        help="显示版本信息"
+    )
 
 class CustomCommand(click.Command):
     """自定义命令类，支持-h简写显示帮助"""
     def get_help_option(self, ctx):
-        # 创建一个自定义的帮助选项，支持 -h 和 --help
-        def show_help(ctx, param, value):
-            if value and not ctx.resilient_parsing:
-                click.echo(ctx.get_help(), color=ctx.color)
-                ctx.exit()
-
-        return click.Option(
-            ['-h', '--help'],
-            is_flag=True,
-            expose_value=False,
-            callback=show_help,
-            help="显示帮助信息"
-        )
-
+        return gen_help_option()
 
 class CustomGroup(click.Group):
     """自定义命令组，支持-h简写显示帮助"""
     def get_help_option(self, ctx):
-        # 创建一个自定义的帮助选项，支持 -h 和 --help
-        def show_help(ctx, param, value):
-            if value and not ctx.resilient_parsing:
-                click.echo(ctx.get_help(), color=ctx.color)
-                ctx.exit()
+        return gen_help_option()
 
-        return click.Option(
-            ['-h', '--help'],
-            is_flag=True,
-            expose_value=False,
-            callback=show_help,
-            help="显示帮助信息"
-        )
+
+    def get_params(self, ctx):
+        # 添加版本选项到顶级命令
+        rv = super().get_params(ctx)
+        # 仅在顶层命令添加版本选项，不在子命令中添加
+        if ctx.parent is None:
+            version_opt = gen_version_option()
+            rv = [version_opt] + list(rv)
+        return rv
 
     def command(self, *args, **kwargs):
         # 子命令使用 CustomCommand 类而非 CustomGroup，避免子命令被当作可分组命令
@@ -63,7 +79,6 @@ class CustomGroup(click.Group):
 
 @click.group(cls=CustomGroup)
 def main():
-    """ConfMirror - 系统配置文件备份与还原工具"""
     pass
 
 @main.command()
