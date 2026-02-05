@@ -38,7 +38,7 @@ class ColoredFormatter(logging.Formatter):
         # 调用父类的format方法
         formatted = super().format(record)
 
-        # 恢复原始消息
+        # 还原原始消息
         record.msg = original_msg
 
         return formatted

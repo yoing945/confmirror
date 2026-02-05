@@ -42,11 +42,16 @@ def compare_content(src: Path, dest: Path) -> bool:
         bool: 内容相同返回True，不同返回False
     """
     if not dest.exists():
-        return False  # 目标文件不存在，认为内容不同
+        # 目标文件不存在，认为内容不同
+        return False
 
     try:
-        # 使用文件比较
-        import filecmp
+        # 文件类型不同
+        if src.is_dir() != dest.is_dir():
+            return False
+        if src.is_dir():
+            # 目录比较直接返回True
+            return True
         return filecmp.cmp(src, dest, shallow=False)
     except Exception:
         # 如果文件比较失败，使用哈希比较

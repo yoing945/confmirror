@@ -551,7 +551,7 @@ restore_specific_module() {
 # ===================== 全量还原（危险操作）=====================
 restore_all() {
   log_warning "⚠️  警告：即将执行【全量系统配置还原】！此操作会覆盖当前系统中的配置文件。"
-  log_warning "⚠️  所有被备份的文件/目录将从 Git 备份仓库恢复至原始位置。"
+  log_warning "⚠️  所有被备份的文件/目录将从 Git 备份仓库还原至原始位置。"
   read -p "是否继续？(输入 YES 确认): " confirm
   if [ "$confirm" != "YES" ]; then
     log_info "用户取消全量还原操作。"

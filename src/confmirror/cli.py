@@ -17,7 +17,7 @@ from .logger import setup_logger
 
 @click.group()
 def main():
-    """ConfMirror - 系统配置文件备份与恢复工具"""
+    """ConfMirror - 系统配置文件备份与还原工具"""
     pass
 
 @main.command()
@@ -85,42 +85,46 @@ def backup(module, override, target_paths):
         sys.exit(1)
 
 @main.command()
-@click.option('-m', '--module', type=str, help='指定要恢复的模块名称')
+@click.option('-m', '--module', type=str, help='指定要还原的模块名称')
+@click.option('-f', '--force', is_flag=True, help='强制覆盖还原模式（默认为差异还原）')
 @click.argument('target_paths', nargs=-1, type=str)
-def restore(module, target_paths):
-    """执行恢复操作"""
+def restore(module, force, target_paths):
+    """执行还原操作"""
     try:
         config = load_config()
 
         # 检查配置是否加载成功
         if not config:
-            click.echo("❌ 配置加载失败，无法执行恢复任务", err=True)
+            click.echo("❌ 配置加载失败，无法执行还原任务", err=True)
             sys.exit(1)
 
         logger = setup_logger(config)
 
-        # 根据参数决定恢复方式
+        if force:
+            logger.info("⚠️  已启用强制覆盖还原模式")
+
+        # 根据参数决定还原方式
         if module:
-            # 分模块恢复
-            logger.info(f"正在执行模块恢复: {module}")
-            execute_restore(config, logger, target_module_name=module)
+            # 分模块还原
+            logger.info(f"正在执行模块: {module}")
+            execute_restore(config, logger, target_module_name=module, force=force)
         elif target_paths:
             log_str = target_paths[0]
             if len(target_paths) > 1:
                 log_str += f", ..."
-            logger.info(f"开始执行路径恢复: {log_str}")
+            logger.info(f"开始执行路径还原: {log_str}")
             for target_path in target_paths:
-                execute_restore(config, logger, target_path=target_path)
+                execute_restore(config, logger, target_path=target_path, force=force)
         else:
-            # 全量恢复需要二次确认
-            confirm = click.prompt("⚠️  正在进行全量恢复操作，这会覆盖所有备份关联的系统配置文件。\n输入 'YES' 确认继续", type=str)
+            # 全量还原需要二次确认
+            confirm = click.prompt("⚠️  正在进行全量还原操作，这会覆盖所有备份关联的系统配置文件。\n输入 'YES' 确认继续", type=str)
             if confirm != 'YES':
-                click.echo("全量恢复已取消")
+                click.echo("全量还原已取消")
                 return
-            logger.info("开始执行全量恢复")
-            execute_restore(config, logger)
+            logger.info("开始执行全量还原")
+            execute_restore(config, logger, force=force)
 
-        logger.info("✅ 恢复完成")
+        logger.info("✅ 还原完成")
     except Exception as e:
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
