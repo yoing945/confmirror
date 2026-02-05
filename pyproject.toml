@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "confmirror"
-version = "1.0"
+version = "1.0.0"
 description = "Backup and restore system configs with Git versioning"
 readme = "README.md"
 authors = [{name = "yoing945", email = "yoing945@qq.com"}]
