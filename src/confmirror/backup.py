@@ -14,7 +14,7 @@ import hashlib
 
 
 def execute_backup(config: dict, logger, target_module_name: Optional[str] = None,
-                   target_path: Optional[str] = None, override: bool = False) -> None:
+                   target_path: Optional[str] = None, force: bool = False) -> None:
     """
     执行备份操作
 
@@ -23,7 +23,7 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
         logger: 日志记录器
         target_module_name: 指定要备份的模块名称
         target_path: 指定要备份的路径
-        override: 是否强制覆盖备份（默认为False，即增量备份）
+        force: 是否强制覆盖备份（默认为False，即差异备份）
     """
     settings = config[ConfigKeys.SECTION_SETTINGS]
     backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
@@ -38,7 +38,7 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
         if not found_module:
             logger.error(f"找不到模块: '{target_module_name}' ")
             return
-        backup_module(found_module, backup_root, settings, logger, override)
+        backup_module(found_module, backup_root, settings, logger, force)
 
     elif target_path:
         module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
@@ -64,14 +64,14 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
             if should_exclude_path(path, all_exclude_patterns, parent_path):
                 logger.info(f"[路径被排除] 跳过备份: {path}")
                 continue
-            backup_single_path(path, backup_root, logger, override)
+            backup_single_path(path, backup_root, logger, force)
     else:
         # 全量备份
         for module in config.get(ConfigKeys.SECTION_MODULES, []):
-            backup_module(module, backup_root, settings, logger, override)
+            backup_module(module, backup_root, settings, logger, force)
 
 
-def _backup_directory(src_dir: Path, dest_dir: Path, logger, override: bool = False):
+def _backup_directory(src_dir: Path, dest_dir: Path, logger, force: bool = False):
     """
     备份目录及其内容
 
@@ -79,10 +79,10 @@ def _backup_directory(src_dir: Path, dest_dir: Path, logger, override: bool = Fa
         src_dir: 源目录
         dest_dir: 目标目录
         logger: 日志记录器
-        override: 是否强制覆盖
+        force: 是否强制覆盖
     """
-    # 检查是否跳过（增量备份）
-    if not override and dest_dir.exists() and compare_meta(src_dir, dest_dir):
+    # 检查是否跳过（差异备份）
+    if not force and dest_dir.exists() and compare_meta(src_dir, dest_dir):
         logger.info(f"[跳过备份] 目录信息无变化: {src_dir}")
         return
 
@@ -102,7 +102,7 @@ def _backup_directory(src_dir: Path, dest_dir: Path, logger, override: bool = Fa
     logger.info(f"[目录信息备份成功] → {src_dir} (权限:{dir_mode} 用户:{src_stat.st_uid}:{src_stat.st_gid})")
 
 
-def _backup_file(src: Path, dest: Path, logger, override: bool = False, use_hash: bool = False):
+def _backup_file(src: Path, dest: Path, logger, force: bool = False, use_hash: bool = False):
     """
     备份单个文件
 
@@ -110,11 +110,11 @@ def _backup_file(src: Path, dest: Path, logger, override: bool = False, use_hash
         src: 源文件路径
         dest: 目标文件路径
         logger: 日志记录器
-        override: 是否强制覆盖
+        force: 是否强制覆盖
         use_hash: 是否使用哈希比对（增量备份时）
     """
-    # 检查是否跳过（增量备份）
-    if not override and same_file(src, dest):
+    # 检查是否跳过（差异备份）
+    if not force and same_file(src, dest):
         logger.info(f"[跳过备份] 文件信息无变化: {src}")
         return
 
@@ -143,7 +143,7 @@ def _backup_file(src: Path, dest: Path, logger, override: bool = False, use_hash
         logger.error(f"[备份失败] {src}: {str(e)}")
 
 
-def backup_single_path(src: Path, mirror_root: Path, logger, override: bool = False):
+def backup_single_path(src: Path, mirror_root: Path, logger, force: bool = False):
     """
     备份单个路径（文件或目录）到镜像目录
 
@@ -151,7 +151,7 @@ def backup_single_path(src: Path, mirror_root: Path, logger, override: bool = Fa
         src: 源路径
         mirror_root: 镜像根目录
         logger: 日志记录器
-        override: 是否强制覆盖
+        force: 是否强制覆盖
     """
     if not src.exists():
         logger.warning(f"[路径不存在] 跳过备份: {src}")
@@ -166,10 +166,10 @@ def backup_single_path(src: Path, mirror_root: Path, logger, override: bool = Fa
     dest = mirror_root / str(src).lstrip('/')
 
     if src.is_file():
-        _backup_file(src, dest, logger, override)
+        _backup_file(src, dest, logger, force)
     elif src.is_dir():
         # 对于目录，只备份目录本身（不递归内容）
-        _backup_directory(src, dest, logger, override)
+        _backup_directory(src, dest, logger, force)
 
 
 def expand_path_patterns(path_pattern: str, parent_path: str = "", exclude_patterns: list = []) -> list:
@@ -210,7 +210,7 @@ def expand_path_patterns(path_pattern: str, parent_path: str = "", exclude_patte
 
 
 def backup_module(module: dict, backup_root: Path, settings: dict, logger,
-                  override: bool = False):
+                  force: bool = False):
     """
     备份模块配置中指定的路径或脚本
 
@@ -219,7 +219,7 @@ def backup_module(module: dict, backup_root: Path, settings: dict, logger,
         backup_root: 镜像根目录
         settings: 配置设置字典
         logger: 日志记录器
-        override: 是否强制覆盖备份（默认为False，即增量备份）
+        force: 是否强制覆盖备份（默认为False，即差异备份）
     """
     module_name = module[ConfigKeys.MOD_NAME]
     logger.info(f"正在备份模块: {module_name}")
@@ -257,9 +257,9 @@ def backup_module(module: dict, backup_root: Path, settings: dict, logger,
             for path in expanded_paths:
                 # 直接处理glob结果，根据文件类型执行相应备份
                 if path.is_file():
-                    _backup_file(path, backup_root / str(path).lstrip('/'), logger, override)
+                    _backup_file(path, backup_root / str(path).lstrip('/'), logger, force)
                 elif path.is_dir():
-                    _backup_directory(path, backup_root / str(path).lstrip('/'), logger, override)
+                    _backup_directory(path, backup_root / str(path).lstrip('/'), logger, force)
                 else:
                     logger.warning(f"[跳过] 不支持的文件类型: {path}")
     else:

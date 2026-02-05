@@ -22,9 +22,9 @@ def main():
 
 @main.command()
 @click.option('-m', '--module', type=str, help='指定要备份的模块名称')
-@click.option('-o', '--override', is_flag=True, help='强制覆盖备份模式')
+@click.option('-f', '--force', is_flag=True, help='强制覆盖备份模式')
 @click.argument('target_paths', nargs=-1, type=str)
-def backup(module, override, target_paths):
+def backup(module, force, target_paths):
     """执行备份操作"""
     try:
         # 加载配置文件
@@ -42,14 +42,14 @@ def backup(module, override, target_paths):
         backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
         logger.info(f"开始执行备份，镜像目录: {backup_root}")
 
-        if override:
+        if force:
             logger.info("⚠️  已启用强制覆盖备份模式")
 
         # 根据参数决定备份方式
         if module:
             # 分模块备份
             logger.info(f"正在执行模块备份: {module}")
-            execute_backup(config, logger, target_module_name=module, override=override)
+            execute_backup(config, logger, target_module_name=module, force=force)
         elif target_paths:
             # 如果target_paths长度>1，日志只输出前1个，后续用...代替
             log_str = target_paths[0]
@@ -58,7 +58,7 @@ def backup(module, override, target_paths):
             logger.info(f"开始执行路径备份: {log_str}")
             # 指定路径备份 - 支持多个路径
             for target_path in target_paths:
-                execute_backup(config, logger, target_path=target_path, override=override)
+                execute_backup(config, logger, target_path=target_path, force=force)
         else:
             confirm = click.prompt("正在进行全量备份, y/n?", type=str)
             confirm = confirm.strip().lower()
@@ -67,7 +67,7 @@ def backup(module, override, target_paths):
                 return
             # 全量备份
             logger.info("开始执行全量备份")
-            execute_backup(config, logger, override=override)
+            execute_backup(config, logger, force=force)
 
         if settings.get(ConfigKeys.GIT_AUTO_COMMIT):
             msg = f"confmirror 备份: {name}"
