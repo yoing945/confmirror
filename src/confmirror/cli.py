@@ -15,7 +15,53 @@ from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
 
 
-@click.group()
+class CustomCommand(click.Command):
+    """自定义命令类，支持-h简写显示帮助"""
+    def get_help_option(self, ctx):
+        # 创建一个自定义的帮助选项，支持 -h 和 --help
+        def show_help(ctx, param, value):
+            if value and not ctx.resilient_parsing:
+                click.echo(ctx.get_help(), color=ctx.color)
+                ctx.exit()
+
+        return click.Option(
+            ['-h', '--help'],
+            is_flag=True,
+            expose_value=False,
+            callback=show_help,
+            help="显示帮助信息"
+        )
+
+
+class CustomGroup(click.Group):
+    """自定义命令组，支持-h简写显示帮助"""
+    def get_help_option(self, ctx):
+        # 创建一个自定义的帮助选项，支持 -h 和 --help
+        def show_help(ctx, param, value):
+            if value and not ctx.resilient_parsing:
+                click.echo(ctx.get_help(), color=ctx.color)
+                ctx.exit()
+
+        return click.Option(
+            ['-h', '--help'],
+            is_flag=True,
+            expose_value=False,
+            callback=show_help,
+            help="显示帮助信息"
+        )
+
+    def command(self, *args, **kwargs):
+        # 子命令使用 CustomCommand 类而非 CustomGroup，避免子命令被当作可分组命令
+        kwargs.setdefault('cls', CustomCommand)
+        return super().command(*args, **kwargs)
+
+    def group(self, *args, **kwargs):
+        # 子分组仍使用 CustomGroup
+        kwargs.setdefault('cls', CustomGroup)
+        return super().group(*args, **kwargs)
+
+
+@click.group(cls=CustomGroup)
 def main():
     """ConfMirror - 系统配置文件备份与还原工具"""
     pass
@@ -23,7 +69,7 @@ def main():
 @main.command()
 @click.option('-m', '--module', type=str, help='指定要备份的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖备份模式')
-@click.argument('target_paths', nargs=-1, type=str)
+@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def backup(module, force, target_paths):
     """执行备份操作"""
     try:
@@ -87,7 +133,7 @@ def backup(module, force, target_paths):
 @main.command()
 @click.option('-m', '--module', type=str, help='指定要还原的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖还原模式（默认为差异还原）')
-@click.argument('target_paths', nargs=-1, type=str)
+@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def restore(module, force, target_paths):
     """执行还原操作"""
     try:
@@ -132,7 +178,7 @@ def restore(module, force, target_paths):
 
 @main.command()
 @click.option('-m', '--module', type=str, help='查看指定模块的权限信息')
-@click.argument('target_paths', nargs=-1, type=str)
+@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def perms(module, target_paths):
     """查看备份文件的权限信息"""
     try:
@@ -191,7 +237,7 @@ def ls(module, detail):
 @main.command()
 @click.option('-m', '--module', type=str, help='对比整个模块的所有文件')
 @click.option('-d', '--detail', is_flag=True, help='输出详细的文件内容差异')
-@click.argument('target_paths', nargs=-1, type=str)
+@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def diff(module, detail, target_paths):
     """对比源文件与备份文件的差异"""
     try:
