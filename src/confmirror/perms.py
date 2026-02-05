@@ -146,14 +146,14 @@ def display_perms_info(perms_list: List[Dict], config: Dict):
         
         path = info['path']
         source_path = get_src_path_from_backup_full_path(config, path)
+        click.echo(f"路径: {source_path}")
         # 检查源文件是否存在并显示其权限
         if source_path.exists():
             source_stat = source_path.stat()
             source_mode = oct(source_stat.st_mode)[-3:]
             source_uid = source_stat.st_uid
             source_gid = source_stat.st_gid
-            click.echo(f"源文件: {source_path}")
-            click.echo(f"  类型: {'dir' if source_path.is_dir() else 'file'}, 权限: {source_mode}, 所有者: {source_uid}:{source_gid}")
+            click.echo(f"  (src) 类型: {'dir' if source_path.is_dir() else 'file'}, 权限: {source_mode}, 所有者: {source_uid}:{source_gid}")
         else:
             click.echo(f"⚠️  源文件: {source_path} (不存在)")
 
@@ -163,6 +163,5 @@ def display_perms_info(perms_list: List[Dict], config: Dict):
         uid = meta.get('uid', 'unknown')
         gid = meta.get('gid', 'unknown')
 
-        click.echo(f"备份文件: {path}")
-        click.echo(f"  类型: {type_str}, 权限: {mode}, 所有者: {uid}:{gid}")
+        click.echo(f"  (bak) 类型: {type_str}, 权限: {mode}, 所有者: {uid}:{gid}")
 

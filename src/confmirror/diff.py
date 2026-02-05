@@ -115,14 +115,13 @@ def _get_diff_prefix(is_same: bool) -> str:
     """获取差异前缀"""
     return "" if is_same else "⚠️  "
 
-def compare_files(source: Path, backup: Path, logger, show_content_diff: bool = True) -> bool:
+def compare_files(source: Path, backup: Path, show_content_diff: bool = True) -> bool:
     """
     比较两个文件
 
     Args:
         source: 源文件路径
         backup: 备份文件路径
-        logger: 日志记录器
         show_content_diff: 是否显示详细内容差异
 
     Returns:
@@ -132,15 +131,15 @@ def compare_files(source: Path, backup: Path, logger, show_content_diff: bool = 
     backup_stat = backup.stat()
     is_dir = source.is_dir() and backup.is_dir()
 
-    logger.info(f"源文件: {source}")
-    logger.info(f"备份文件: {backup}")
-    logger.info(f"基本信息:")
-    logger.info(f"  - 类型: {'dir' if is_dir else 'file'}")
-    logger.info(f"  - 源修改时间: {datetime.fromtimestamp(source_stat.st_mtime)}")
-    logger.info(f"  - 备份修改时间: {datetime.fromtimestamp(backup_stat.st_mtime)}")
+    click.echo(f"源文件: {source}")
+    click.echo(f"备份文件: {backup}")
+    click.echo(f"基本信息:")
+    click.echo(f"  - 类型: {'dir' if is_dir else 'file'}")
+    click.echo(f"  - 源修改时间: {datetime.fromtimestamp(source_stat.st_mtime)}")
+    click.echo(f"  - 备份修改时间: {datetime.fromtimestamp(backup_stat.st_mtime)}")
     diff_size_prefix = _get_diff_prefix(source_stat.st_size == backup_stat.st_size)
-    logger.info(f"  - {diff_size_prefix}源大小: {source_stat.st_size} bytes")
-    logger.info(f"  - {diff_size_prefix}备份大小: {backup_stat.st_size} bytes")
+    click.echo(f"  - {diff_size_prefix}源大小: {source_stat.st_size} bytes")
+    click.echo(f"  - {diff_size_prefix}备份大小: {backup_stat.st_size} bytes")
 
     # 检查是否是目录
     if is_dir:
@@ -152,14 +151,14 @@ def compare_files(source: Path, backup: Path, logger, show_content_diff: bool = 
         meta_data = read_meta(backup)
         if meta_data:
             diff_meta_prefix = _get_diff_prefix(meta_same)
-            logger.info(f"  - {diff_meta_prefix}源目录权限: {oct(source_stat.st_mode)[-3:]} (uid:{source_stat.st_uid}, gid:{source_stat.st_gid})")
-            logger.info(f"  - {diff_meta_prefix}备份目录权限: {meta_data.get('mode', 'N/A')} (uid:{meta_data.get('uid', 'N/A')}, gid:{meta_data.get('gid', 'N/A')})")
+            click.echo(f"  - {diff_meta_prefix}源目录权限: {oct(source_stat.st_mode)[-3:]} (uid:{source_stat.st_uid}, gid:{source_stat.st_gid})")
+            click.echo(f"  - {diff_meta_prefix}备份目录权限: {meta_data.get('mode', 'N/A')} (uid:{meta_data.get('uid', 'N/A')}, gid:{meta_data.get('gid', 'N/A')})")
 
         if meta_same:
-            logger.info(f"  ✅ 状态一致")
+            click.echo(f"  ✅ 状态一致")
             return True
         else:
-            logger.info(f"  ⚠️  状态存在差异")
+            click.echo(f"  ⚠️  状态存在差异")
             return False
     else:
         content_same = compare_content(source, backup)
@@ -168,17 +167,17 @@ def compare_files(source: Path, backup: Path, logger, show_content_diff: bool = 
         # 读取备份文件的元数据
         meta_data = read_meta(backup)
         if meta_data:
-            logger.info(f"  - 源文件权限: {oct(source_stat.st_mode)[-3:]} (uid:{source_stat.st_uid}, gid:{source_stat.st_gid})")
-            logger.info(f"  - 备份文件权限: {meta_data.get('mode', 'N/A')} (uid:{meta_data.get('uid', 'N/A')}, gid:{meta_data.get('gid', 'N/A')})")
+            click.echo(f"  - 源文件权限: {oct(source_stat.st_mode)[-3:]} (uid:{source_stat.st_uid}, gid:{source_stat.st_gid})")
+            click.echo(f"  - 备份文件权限: {meta_data.get('mode', 'N/A')} (uid:{meta_data.get('uid', 'N/A')}, gid:{meta_data.get('gid', 'N/A')})")
 
         # 判断是否完全相同
         files_identical = content_same and meta_same
 
         if files_identical:
-            logger.info(f"  ✅ 状态一致")
+            click.echo(f"  ✅ 状态一致")
             return True
         else:
-            logger.info(f"  ⚠️  状态存在差异")
+            click.echo(f"  ⚠️  状态存在差异")
 
             if show_content_diff:
                 show_file_diff(source, backup)
@@ -228,25 +227,25 @@ def show_file_diff(source: Path, backup: Path, context_lines: int = 3) -> None:
     except Exception as e:
         click.echo(f"\n   ⚠️  无法读取文件内容进行差异对比: {e}")
 
-def print_line(logger, count: int = 100) -> None:
+def print_line(count: int = 100) -> None:
     """
     打印一条分隔线
     """
-    logger.info(f"{'-' * count}")
+    click.echo(f"{'-' * count}")
 
-def compare_files_set(source_files_set: set, backup_files_set: set, logger, backup_root: Path, detail: bool = False) -> None:
+def compare_files_set(source_files_set: set, backup_files_set: set, backup_root: Path, detail: bool = False) -> None:
     # 计算新增、删除和修改的文件
     added_files = source_files_set - backup_files_set  # 源中有但备份中没有
     deleted_files = backup_files_set - source_files_set  # 备份中有但源中没有
     common_files = source_files_set & backup_files_set  # 两者都有
 
     for added_file in added_files:
-        logger.info(f"\033[32m+ 源文件: {added_file}\033[0m")
-        print_line(logger)
+        click.echo(f"\033[32m+ 源文件: {added_file}\033[0m")
+        print_line()
 
     for deleted_file in deleted_files:
-        logger.info(f"\033[31m- 源文件: {deleted_file}\033[0m")
-        print_line(logger)
+        click.echo(f"\033[31m- 源文件: {deleted_file}\033[0m")
+        print_line()
 
     # 比较共同存在的文件
     total_common_files = len(common_files)
@@ -258,21 +257,20 @@ def compare_files_set(source_files_set: set, backup_files_set: set, logger, back
 
         if source_file.exists() and backup_file.exists():
             # 调用改进后的compare_files函数，该函数会检查内容和元数据
-            if not compare_files(source_file, backup_file, logger, show_content_diff=detail):
+            if not compare_files(source_file, backup_file, show_content_diff=detail):
                 diff_files += 1
-            print_line(logger)
+            print_line()
 
-    logger.info(f"对比完成: 共{total_common_files}个共同文件, {diff_files}个存在差异, "
+    click.echo(f"对比完成: 共{total_common_files}个共同文件, {diff_files}个存在差异, "
                 f"{len(added_files)}个新增, {len(deleted_files)}个缺失")
 
 
-def diff_paths(config: dict, logger, target_paths: List[str], detail: bool = False) -> None:
+def diff_paths(config: dict, target_paths: List[str], detail: bool = False) -> None:
     """
     对比指定路径下的所有文件与备份目录中的差异
 
     Args:
         config: 配置字典
-        logger: 日志记录器
         target_paths: 目标路径列表（原始系统路径）
         detail: 是否显示详细内容差异
     """
@@ -286,7 +284,7 @@ def diff_paths(config: dict, logger, target_paths: List[str], detail: bool = Fal
     for target_path in target_paths:
         module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
         if not module:
-            logger.error(f"❌ 路径 '{target_path}' 不属于任何模块")
+            click.echo(f"❌ 路径 '{target_path}' 不属于任何模块")
             return
         # 获取排除路径模式和父路径
         all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
@@ -316,16 +314,15 @@ def diff_paths(config: dict, logger, target_paths: List[str], detail: bool = Fal
             # 将相对路径添加到集合中（相对于根目录）
             backup_files_set.add(Path('/') / backup_path.relative_to(backup_root))
 
-    compare_files_set(source_files_set, backup_files_set, logger, backup_root, detail)
+    compare_files_set(source_files_set, backup_files_set, backup_root, detail)
 
 
-def diff_module(config: dict, logger, module_name: str, detail: bool = False) -> None:
+def diff_module(config: dict, module_name: str, detail: bool = False) -> None:
     """
     对比整个模块的所有文件
 
     Args:
         config: 配置字典
-        logger: 日志记录器
         module_name: 模块名称
         detail: 是否显示详细内容差异
     """
@@ -336,13 +333,13 @@ def diff_module(config: dict, logger, module_name: str, detail: bool = False) ->
     target_module = next((m for m in modules if m[ConfigKeys.MOD_NAME] == module_name), None)
 
     if not target_module:
-        logger.error(f"未找到模块: {module_name}")
+        click.echo(f"❌ 未找到模块: {module_name}")
         return
 
-    logger.info(f"开始对比模块: {module_name}")
+    click.echo(f"开始对比模块: {module_name}")
 
     if ConfigKeys.MOD_SCRIPT in target_module:
-        logger.info("脚本模块不支持差异对比")
+        click.echo("脚本模块不支持差异对比")
         return
 
     parent_path = target_module.get(ConfigKeys.MOD_PARENT_PATH, "")
@@ -372,7 +369,6 @@ def diff_module(config: dict, logger, module_name: str, detail: bool = False) ->
 
             # 检查路径是否在排除列表中
             if should_exclude_path(source_path, exclude_patterns, parent_path):
-                logger.info(f"[路径被排除] 跳过差异对比: {source_path}")
                 continue
 
             # 将相对路径添加到集合中（相对于根目录）
@@ -400,5 +396,5 @@ def diff_module(config: dict, logger, module_name: str, detail: bool = False) ->
             if backup_path.exists():
                 backup_files_set.add(backup_path)
 
-    compare_files_set(source_files_set, backup_files_set, logger, backup_root, detail)
+    compare_files_set(source_files_set, backup_files_set, backup_root, detail)
 

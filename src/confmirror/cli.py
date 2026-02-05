@@ -202,9 +202,9 @@ def diff(module, detail, target_paths):
         # 根据参数决定差异对比方式
         if module:
             # 对比整个模块
-            diff_module(config, logger, module, detail)
+            diff_module(config, module, detail)
         elif target_paths:
-            diff_paths(config, logger, target_paths, detail)
+            diff_paths(config, target_paths, detail)
         else:
             click.echo("⚠️  需要指定模块或路径。")
 
