@@ -260,7 +260,7 @@ def backup_module(module: dict, backup_root: Path, settings: dict, logger,
             expanded_paths = expand_path_patterns(path_str, parent_path, exclude_patterns)
 
             if not expanded_paths:
-                logger.warning(f"[路径模式无匹配] 路径模式未匹配到任何文件: {path_str}")
+                logger.warning(f"该路径未到任何文件: {path_str}")
                 continue
 
             for path in expanded_paths:
