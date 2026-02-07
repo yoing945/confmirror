@@ -39,9 +39,10 @@ modules:
       - "/etc/ssh/sshd_config"
 
   - name: "nginx"
+    parent_path: "/etc/nginx"
     include_paths:
-      - "/etc/nginx/nginx.conf"
-      - "/etc/nginx/sites-available/default"
+      - "nginx.conf"
+      - "sites-available/default"
 
   - name: "ufw"
     script: "ufw/script.sh"      # 相对于 script-hooks/ 的脚本路径
@@ -280,6 +281,102 @@ git diff
 git add .
 git commit -m "Backup configuration: $(date +%Y-%m-%d)"
 ```
+
+## 多机配置管理策略
+
+confmirror 支持多种方式管理多台服务器的配置备份，以下是两种主要策略：
+
+### 1. 独立仓库管理
+
+为每台服务器创建独立的配置仓库，实现完全隔离。
+
+#### 目录结构
+```
+config-server1/      # server1 的配置
+├── confmirror.yaml
+├── mirror/
+├── script-hooks/
+└── logs/
+
+config-server2/     # server2 的配置
+├── confmirror.yaml
+├── mirror/
+├── script-hooks/
+└── logs/
+
+config-shared/      # 共享配置
+├── common-scripts/
+└── templates/
+
+```
+
+### 2. 单一仓库管理
+
+使用一个仓库管理所有服务器配置，通过 Git 的 sparse checkout 功能实现每台服务器只拉取自己的配置。也可以使用分支来管理不同服务器的配置，下面以sparse checkout为例说明。
+
+#### 目录结构
+```
+backup-repo/
+├── server1/
+│   ├── confmirror.yaml
+│   ├── mirror/
+│   │   ├── etc/
+│   │   │   ├── ssh/
+│   │   │   │   └── sshd_config
+│   │   │   └── nginx/
+│   │   │       └── nginx.conf
+│   │   └── home/
+│   │       └── user/
+│   │           └── .bashrc
+│   ├── script-hooks/
+│   └── logs/
+├── server2/
+│   ├── confmirror.yaml
+│   ├── mirror/
+│   │   ├── etc/
+│   │   │   ├── network/
+│   │   │   │   └── routes.conf
+│   │   │   └── firewall/
+│   │   │       └── iptables.rules
+│   │   └── home/
+│   │       └── admin/
+│   │           └── .bashrc
+│   ├── script-hooks/
+│   └── logs/
+├── shared/
+│   ├── common-scripts/
+│   └── templates/
+├── .gitignore
+└── README.md
+```
+
+#### 配置 sparse checkout
+
+在每台服务器上执行以下操作：
+
+1. 初始化仓库并启用 sparse checkout：
+```bash
+git clone <repository-url> .
+git config core.sparseCheckout true
+```
+
+2. 编辑 `.git/info/sparse-checkout` 文件，添加对应服务器的目录：
+```bash
+# 对于 server1，添加以下内容到 .git/info/sparse-checkout
+/server1/*
+/shared/*
+
+# 对于 server2，添加以下内容到 .git/info/sparse-checkout
+/server2/*
+/shared/*
+```
+
+3. 更新工作目录：
+```bash
+git read-tree -m -u HEAD
+```
+
+
 ## 常见问题
 
 ### 权限问题
