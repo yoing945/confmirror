@@ -49,7 +49,7 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
         all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
         parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
         if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
-            logger.info(f"路径 '{target_path}' 被排除，跳过备份")
+            logger.info(f"[跳过] 路径 '{target_path}' 被排除")
             return
         # 展开可能的通配符路径，并应用排除规则
         expanded_paths = expand_path_patterns(target_path, "", all_exclude_patterns)
@@ -62,7 +62,7 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
         for path in expanded_paths:
             # 检查路径是否在当前模块的排除列表中
             if should_exclude_path(path, all_exclude_patterns, parent_path):
-                logger.info(f"[路径被排除] 跳过备份: {path}")
+                logger.info(f"[跳过] 路径 '{path}' 被排除")
                 continue
             backup_single_path(path, backup_root, logger, force)
     else:
@@ -83,7 +83,7 @@ def _backup_directory(src_dir: Path, dest_dir: Path, logger, force: bool = False
     """
     # 检查是否跳过（差异备份）
     if not force and dest_dir.exists() and compare_meta(src_dir, dest_dir):
-        logger.info(f"[跳过备份] 目录信息无变化: {src_dir}")
+        logger.info(f"[跳过] 目录信息无变化: {src_dir}")
         return
 
     # 创建目标目录
@@ -115,7 +115,7 @@ def _backup_file(src: Path, dest: Path, logger, force: bool = False, use_hash: b
     """
     # 检查是否跳过（差异备份）
     if not force and same_file(src, dest):
-        logger.info(f"[跳过备份] 文件信息无变化: {src}")
+        logger.info(f"[跳过] 文件信息无变化: {src}")
         return
 
     try:
@@ -154,12 +154,12 @@ def backup_single_path(src: Path, mirror_root: Path, logger, force: bool = False
         force: 是否强制覆盖
     """
     if not src.exists():
-        logger.warning(f"[路径不存在] 跳过备份: {src}")
+        logger.warning(f"路径不存在: {src}")
         return
 
     # 检查是否为支持的文件类型
     if not (src.is_file() or src.is_dir()):
-        logger.warning(f"[跳过] 不支持的文件类型: {src}")
+        logger.warning(f"不支持的文件类型: {src}")
         return
 
     # 检查源路径是否在备份根目录内，避免递归备份

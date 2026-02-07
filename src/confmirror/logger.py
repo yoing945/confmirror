@@ -9,6 +9,9 @@ from confmirror.config import APP_NAME, ConfigKeys
 
 DEFAULT_LOG_MAX_LINES = 1000
 
+# 定义跳过行为的日志颜色
+SKIPPED_COLOR = '\033[90m'  # 灰色
+
 class ColoredFormatter(logging.Formatter):
     """自定义颜色格式化器"""
 
@@ -27,20 +30,11 @@ class ColoredFormatter(logging.Formatter):
         level_color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
         record.levelname = f"{level_color}{record.levelname}{self.COLORS['RESET']}"
 
-        # 为消息添加颜色（根据级别）
-        msg_color = self.COLORS.get(record.levelname
-                                    .replace('\033[31mERROR\033[0m', 'ERROR')
-                                    .replace('\033[33mWARNING\033[0m', 'WARNING')
-                                    .replace('\033[35mCRITICAL\033[0m', 'CRITICAL'), self.COLORS['RESET'])
-        original_msg = record.msg
-        record.msg = f"{msg_color}{original_msg}{self.COLORS['RESET']}"
+        if record.msg.startswith("[跳过]"):
+            record.msg = f"{SKIPPED_COLOR}{record.msg}{self.COLORS['RESET']}"
 
         # 调用父类的format方法
         formatted = super().format(record)
-
-        # 还原原始消息
-        record.msg = original_msg
-
         return formatted
 
 

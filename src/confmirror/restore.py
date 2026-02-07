@@ -79,6 +79,7 @@ def restore_module(module: dict, config: dict, logger, force: bool = False) -> N
 
                 # 检查是否应该排除此路径
                 if should_exclude_path(path, all_exclude_patterns, str(backup_parent_path)):
+                    logger.info(f"[跳过] 路径 '{path}' 被排除")
                     continue
 
                 # 获取相对于备份根目录的路径，这是原始路径
@@ -87,7 +88,7 @@ def restore_module(module: dict, config: dict, logger, force: bool = False) -> N
                     original_path = Path('/') / rel_path
                     restore_file_or_dir(original_path, backup_root, logger, force)
                 except ValueError:
-                    logger.warning(f"[还原跳过] 路径不在备份根目录下 → {path}")
+                    logger.warning(f"路径不在备份根目录下 → {path}")
 
 
 def restore_single_path(target_path: str, config: dict, logger, force: bool = False) -> None:
@@ -114,7 +115,7 @@ def restore_single_path(target_path: str, config: dict, logger, force: bool = Fa
     all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
     parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
     if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
-        logger.info(f"路径 '{target_path}' 被排除，跳过还原")
+        logger.info(f"[跳过] 路径 '{target_path}' 被排除")
         return
 
     # 将用户输入的路径转换为备份根目录下的路径
@@ -133,7 +134,7 @@ def restore_single_path(target_path: str, config: dict, logger, force: bool = Fa
             original_path = Path('/') / rel_path
             restore_file_or_dir(original_path, backup_root, logger, force)
         except ValueError:
-            logger.warning(f"[还原跳过] 路径不在备份根目录下 → {file_path}")
+            logger.warning(f"路径不在备份根目录下 → {file_path}")
 
 def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool = False):
     """
@@ -150,11 +151,11 @@ def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool =
     meta = read_meta(backup)
 
     if not meta:
-        logger.warning(f"[还原跳过] 缺少 .meta → {original}")
+        logger.warning(f"缺少 .meta → {original}")
         return
 
     if not backup.exists():
-        logger.warning(f"[还原跳过] 备份内容不存在 → {original}")
+        logger.warning(f"备份内容不存在 → {original}")
         return
 
     # 检查是否需要跳过（差异还原模式）
@@ -162,7 +163,7 @@ def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool =
         # 导入差异比较函数
         from .diff import same_file
         if same_file(original, backup):
-            logger.info(f"[还原跳过] 文件信息无变化: {original}")
+            logger.info(f"[跳过] 文件信息无变化: {original}")
             return
 
     # 创建父目录
