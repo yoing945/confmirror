@@ -162,6 +162,15 @@ def backup_single_path(src: Path, mirror_root: Path, logger, force: bool = False
         logger.warning(f"[跳过] 不支持的文件类型: {src}")
         return
 
+    # 检查源路径是否在备份根目录内，避免递归备份
+    try:
+        src.resolve().relative_to(mirror_root.resolve())
+        logger.error(f"源路径 '{src}' 是备份目录或其子目录，不能备份备份目录自身")
+        return
+    except ValueError:
+        # 源路径不在备份根目录内，继续备份
+        pass
+
     # 直接使用源路径的绝对路径作为备份路径
     dest = mirror_root / str(src).lstrip('/')
 
@@ -255,6 +264,15 @@ def backup_module(module: dict, backup_root: Path, settings: dict, logger,
                 continue
 
             for path in expanded_paths:
+                # 检查路径是否在备份根目录内，避免递归备份
+                try:
+                    path.resolve().relative_to(backup_root.resolve())
+                    logger.error(f"源路径 '{path}' 是备份目录或其子目录，不能备份备份目录自身")
+                    continue
+                except ValueError:
+                    # 源路径不在备份根目录内，继续备份
+                    pass
+                
                 # 直接处理glob结果，根据文件类型执行相应备份
                 if path.is_file():
                     _backup_file(path, backup_root / str(path).lstrip('/'), logger, force)
