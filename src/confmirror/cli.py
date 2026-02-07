@@ -123,8 +123,6 @@ def backup(module, force, target_paths):
 
         # 根据参数决定备份方式
         if module:
-            # 分模块备份
-            logger.info(f"正在执行模块备份: {module}")
             execute_backup(config, logger, target_module_name=module, force=force)
         elif target_paths:
             # 如果target_paths长度>1，日志只输出前1个，后续用...代替
@@ -181,8 +179,6 @@ def restore(module, force, target_paths):
 
         # 根据参数决定还原方式
         if module:
-            # 分模块还原
-            logger.info(f"正在执行模块: {module}")
             execute_restore(config, logger, target_module_name=module, force=force)
         elif target_paths:
             log_str = target_paths[0]

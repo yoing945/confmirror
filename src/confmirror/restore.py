@@ -1,6 +1,5 @@
 import os
 import shutil
-import subprocess
 import glob
 from pathlib import Path
 from typing import Optional
@@ -67,7 +66,7 @@ def restore_module(module: dict, config: dict, logger, force: bool = False) -> N
         all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
 
         for path_str in module[ConfigKeys.MOD_INCLUDE_PATHS]:
-            full_path_pattern = str(backup_parent_path / path_str)
+            full_path_pattern = str(backup_parent_path / path_str.lstrip('/'))
             matched_paths = glob.glob(full_path_pattern, recursive=True)
 
             for path_str in matched_paths:
