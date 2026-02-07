@@ -4,6 +4,7 @@ import traceback
 from pathlib import Path
 
 import click
+from click import Context, Parameter
 
 from .config import APP_NAME, ConfigKeys, load_config
 from .backup import execute_backup
@@ -14,6 +15,20 @@ from .diff import diff_paths, diff_module
 from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
 from . import __version__
+
+
+def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
+    """自动补全模块名称"""
+    try:
+        config = load_config()
+        if config and ConfigKeys.SECTION_MODULES in config:
+            modules = config[ConfigKeys.SECTION_MODULES]
+            # 返回匹配不完整输入的模块名称
+            return [mod[ConfigKeys.NAME] for mod in modules if mod[ConfigKeys.NAME].startswith(incomplete)]
+        return []
+    except:
+        # 如果配置加载失败，返回空列表
+        return []
 
 
 def gen_help_option():
@@ -82,7 +97,7 @@ def main():
     pass
 
 @main.command()
-@click.option('-m', '--module', type=str, help='指定要备份的模块名称')
+@click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要备份的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖备份模式')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def backup(module, force, target_paths):
@@ -146,7 +161,7 @@ def backup(module, force, target_paths):
         sys.exit(1)
 
 @main.command()
-@click.option('-m', '--module', type=str, help='指定要还原的模块名称')
+@click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要还原的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖还原模式（默认为差异还原）')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def restore(module, force, target_paths):
@@ -192,7 +207,7 @@ def restore(module, force, target_paths):
         sys.exit(1)
 
 @main.command()
-@click.option('-m', '--module', type=str, help='查看指定模块的权限信息')
+@click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='查看指定模块的权限信息')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def perms(module, target_paths):
     """查看备份文件的权限信息"""
@@ -225,7 +240,7 @@ def perms(module, target_paths):
         sys.exit(1)
 
 @main.command()
-@click.option('-m', '--module', type=str, help='列出指定模块的信息')
+@click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='列出指定模块的信息')
 @click.option('-d', '--detail', is_flag=True, help='输出模块的详细信息')
 def ls(module, detail):
     """列出所有可用模块"""
@@ -250,7 +265,7 @@ def ls(module, detail):
 
 
 @main.command()
-@click.option('-m', '--module', type=str, help='对比整个模块的所有文件')
+@click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='对比整个模块的所有文件')
 @click.option('-d', '--detail', is_flag=True, help='输出详细的文件内容差异')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 def diff(module, detail, target_paths):

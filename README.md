@@ -35,6 +35,7 @@
 - **Git 原生集成**：备份结果即 Git 仓库，天然支持历史追溯、差异对比、远程同步。
 - **轻量无侵入**：不修改原系统目录，仅在独立数据仓库中维护镜像。
 - **生产就绪**：支持交互确认、分级日志、错误还原，避免误操作。
+- **智能补全**：支持命令和模块名称的自动补全功能。
 
 ---
 
@@ -353,6 +354,29 @@ confmirror --help
 ```
 
 > 所有命令均通过统一入口 `confmirror` 分发。
+
+## 6.1 自动补全功能
+
+confmirror 支持命令和模块名称的自动补全功能。您可以使用以下方式安装自动补全：
+
+```bash
+# 对于 Bash 用户
+eval "$(_CONFMIRROR_COMPLETE=bash_source confmirror)"
+
+# 对于 Zsh 用户  
+eval "$(_CONFMIRROR_COMPLETE=zsh_source confmirror)"
+
+# 对于 Fish 用户
+_CONFMIRROR_COMPLETE=fish_source confmirror
+```
+
+要永久激活自动补全，请参阅 [AUTO_COMPLETION.md](AUTO_COMPLETION.md) 文档。
+
+安装完成后，您可以：
+
+- 输入 `confmirror` 后按 `TAB` 键查看可用的子命令
+- 输入 `confmirror backup -m` 后按 `TAB` 键查看可用的模块名
+- 输入 `confmirror restore -m` 后按 `TAB` 键查看可用的模块名
 
 ---
 
