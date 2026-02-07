@@ -181,6 +181,8 @@ modules:
 
 > ⚠️ `include_paths` 与 `script` 互斥，优先使用 `script`。
 
+> 💡 **注意**：配置文件支持自动验证功能，能够检测YAML语法错误（如制表符、括号不匹配等）并提供清晰的错误信息，帮助您快速定位和修复配置问题。
+
 ---
 
 ### 5.2 备份流程
@@ -412,6 +414,18 @@ sudo ./confmirror restore --module sshd
 ./confmirror perms /etc/ssh/sshd_config
 ```
 
+### 权限问题处理
+
+在某些情况下，备份或还原操作可能需要更高的权限。如果遇到权限错误，可以使用以下方式提权：
+
+```bash
+# 使用完整路径执行提权
+sudo $(which confmirror) backup
+
+# 或者使用 Python 模块方式
+sudo python -m src.confmirror.cli backup
+```
+
 ---
 
 ## 8. 与同类工具对比
@@ -425,18 +439,201 @@ sudo ./confmirror restore --module sshd
 
 ---
 
-## 9. 未来扩展
+## 9. 多服务器配置管理策略
 
-### 9.1 有计划实现的功能
+confmirror 支持多种方式管理多台服务器的配置备份，以下是两种主要策略：
+
+### 9.1 单一仓库管理（推荐用于关联服务器）
+
+使用一个仓库管理所有服务器配置，通过 Git 的 sparse checkout 功能实现每台服务器只拉取自己的配置。
+
+#### 目录结构
+```
+backup-repo/
+├── mainserver/
+│   ├── confmirror.yaml
+│   ├── mirror/
+│   │   ├── etc/
+│   │   │   ├── ssh/
+│   │   │   │   └── sshd_config
+│   │   │   └── nginx/
+│   │   │       └── nginx.conf
+│   │   └── home/
+│   │       └── user/
+│   │           └── .bashrc
+│   ├── script-hooks/
+│   └── logs/
+├── routeserver/
+│   ├── confmirror.yaml
+│   ├── mirror/
+│   │   ├── etc/
+│   │   │   ├── network/
+│   │   │   │   └── routes.conf
+│   │   │   └── firewall/
+│   │   │       └── iptables.rules
+│   │   └── home/
+│   │       └── admin/
+│   │           └── .bashrc
+│   ├── script-hooks/
+│   └── logs/
+├── shared/
+│   ├── common-scripts/
+│   └── templates/
+├── .gitignore
+└── README.md
+```
+
+#### 每台服务器配置示例
+
+1. **mainserver/confmirror.yaml**:
+```yaml
+metadata:
+  name: "mainserver"
+  backup_root: "./mirror"
+  script_hooks_dir: "./script-hooks"
+  log_dir: "./logs"
+  git_auto_commit: true
+  git_auto_push: false
+
+modules:
+  - name: "sshd"
+    paths:
+      - "/etc/ssh/sshd_config"
+  - name: "nginx"
+    paths:
+      - "/etc/nginx/nginx.conf"
+      - "/etc/nginx/sites-available/default"
+  - name: "users"
+    paths:
+      - "/home/user/.bashrc"
+```
+
+2. **routeserver/confmirror.yaml**:
+```yaml
+metadata:
+  name: "routeserver"
+  backup_root: "./mirror"
+  script_hooks_dir: "./script-hooks"
+  log_dir: "./logs"
+  git_auto_commit: true
+  git_auto_push: false
+
+modules:
+  - name: "network"
+    paths:
+      - "/etc/network/routes.conf"
+  - name: "firewall"
+    paths:
+      - "/etc/firewall/iptables.rules"
+  - name: "admin"
+    paths:
+      - "/home/admin/.bashrc"
+```
+
+#### 配置 sparse checkout
+
+在每台服务器上执行以下操作：
+
+1. 初始化仓库并启用 sparse checkout：
+```bash
+git clone <repository-url> .
+git config core.sparseCheckout true
+```
+
+2. 编辑 `.git/info/sparse-checkout` 文件，添加对应服务器的目录：
+```bash
+# 对于 mainserver，添加以下内容到 .git/info/sparse-checkout
+/mainserver/*
+/shared/*
+
+# 对于 routeserver，添加以下内容到 .git/info/sparse-checkout
+/routeserver/*
+/shared/*
+```
+
+3. 更新工作目录：
+```bash
+git read-tree -m -u HEAD
+```
+
+#### 优点
+- 集中管理所有服务器配置
+- 每台服务器只拉取自己的配置，节省空间和带宽
+- 便于备份和恢复操作
+- 支持统一的版本控制策略
+- 共享脚本和模板可以放在一个位置
+
+#### 缺点
+- 仓库会变得越来越大，包含所有服务器的配置历史
+- 权限控制不够精细
+- 不同服务器的配置可能有不同的安全要求
+
+### 9.2 独立仓库管理（推荐用于独立服务器）
+
+为每台服务器创建独立的配置仓库，实现完全隔离。
+
+#### 目录结构
+```
+config-mainserver/      # mainserver 的配置
+├── confmirror.yaml
+├── mirror/
+├── script-hooks/
+└── logs/
+
+config-routeserver/     # routeserver 的配置
+├── confmirror.yaml
+├── mirror/
+├── script-hooks/
+└── logs/
+
+config-shared/          # 共享脚本和模板
+├── common-scripts/
+└── templates/
+```
+
+#### 配置示例
+
+与单一仓库管理相同，只是每个服务器有独立的仓库。
+
+#### 优点
+- 每个服务器的配置完全隔离
+- 更好的安全性，可以根据需要分配访问权限
+- 仓库体积较小，操作更快
+- 更容易管理不同的备份策略和频率
+- 故障隔离，一台服务器的问题不会影响其他服务器
+
+#### 缺点
+- 需要管理多个仓库
+- 难以统一查看所有配置状态
+- 共享配置和脚本需要额外处理
+
+### 9.3 推荐方案
+
+根据实际需求，我们建议采用**混合方案**：
+
+1. **独立仓库为主**：为每台重要服务器创建独立的配置仓库，便于精细化管理
+2. **共享组件仓库**：创建一个共享仓库存放通用脚本、模板和配置片段
+3. **中央仪表板**：使用一个简单的仓库或工具来监控所有配置仓库的状态
+
+对于紧密关联的服务器（如同一业务线的服务器），单一仓库配合 sparse checkout 是可行的；对于属于不同业务线或安全域的服务器，建议使用独立仓库。
+
+---
+
+## 10. 未来扩展
+
+### 10.1 有计划实现的功能
 
 - [ ] **远程备份仓库**：利用Git原生功能，轻松实现远程仓库备份与同步
 - [ ] **差异对比功能**：实现单文件级别的差异对比，支持源文件与备份文件的比较
 - [ ] **增量备份支持**：虽系统配置文件通常较小，但增量备份仍是重要的性能优化方向
 - [ ] **更多脚本语言支持**：在Shell基础上，扩展对Python等脚本语言的支持
 
-### 9.2 不计划实现的功能
+### 10.2 不计划实现的功能
 
 - ❌ **定时备份任务**：用户可通过cron等系统工具实现，保持confmirror的单一职责
 - ❌ **加密备份**：Git本身提供基本安全防护，额外加密会增加复杂度和使用负担
 - ❌ **图形界面管理工具**：CLI更适合系统配置管理场景，图形界面价值有限
-- ❌ **配置文件验证**：当前异常处理机制已能有效处理配置问题，无需额外验证
+
+### 10.3 已实现的功能增强
+
+- ✅ **配置文件验证**：自动检测YAML语法错误（如制表符、括号不匹配等）并提供清晰的错误信息
