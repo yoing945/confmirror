@@ -120,7 +120,7 @@ confmirror-data/                # ← 数据仓库
 > 💡 **关键约定**：
 > - 所有备份内容存于 `mirror/`
 > - 所有脚本钩子存于 `script-hooks/<mod>/script.sh`
-> - 配置文件默认命名为 `confmirror.yaml`
+> - 配置文件统一命名为 `confmirror.yaml`
 
 ---
 
