@@ -1,5 +1,5 @@
 # **confmirror 设计文档**
-> **Configuration Mirror** —— 基于 Git 的声明式系统配置镜像与还原工具
+> **Configuration Mirror** —— 声明式系统配置镜像与还原工具
 
 ---
 
@@ -7,7 +7,7 @@
 
 - [1. 设计目标](#1-设计目标)
 - [2. 核心特性](#2-核心特性)
-- [3. 整体架构](#3-整体架构)
+- [3. 低耦合设计](#3-低耦合设计)
 - [4. 目录结构](#4-目录结构)
   - [4.1 工具仓库（`confmirror/`）](#41-工具仓库-confmirror)
   - [4.2 数据仓库](#42-数据仓库)
@@ -18,20 +18,20 @@
   - [5.4 脚本钩子机制](#54-脚本钩子机制)
   - [5.5 权限查看功能](#55-权限查看功能)
   - [5.6 模块列表功能](#56-模块列表功能)
-  - [5.7 元数据管理 (`.meta` 文件)](#57-元数据管理-meta-文件)
-  - [5.8 权限与安全](#58-权限与安全)
-  - [5.9 日志系统](#59-日志系统)
+  - [5.7 差异比较功能](#57-差异比较功能)
+  - [5.8 元数据管理 (`.meta` 文件)](#58-元数据管理-meta-文件)
+  - [5.9 权限与安全](#59-权限与安全)
+  - [5.10 日志系统](#510-日志系统)
 - [6. 命令行接口 (CLI)](#6-命令行接口-cli)
 - [7. 使用示例](#7-使用示例)
   - [7.1 初始化](#71-初始化)
   - [7.2 首次备份](#72-首次备份)
   - [7.3 还原 SSH 配置](#73-还原-ssh-配置)
   - [7.4 查看模块权限信息](#74-查看模块权限信息)
-  - [7.5 权限问题处理](#75-权限问题处理)
-- [8. 低耦合设计](#8-低耦合设计)
-- [9. 与同类工具对比](#9-与同类工具对比)
-- [10. 多服务器配置管理策略](#10-多服务器配置管理策略)
-- [11. 未来扩展](#11-未来扩展)
+  - [7.5 查看特定路径权限信息](#75-查看特定路径权限信息)
+  - [7.6 权限问题处理](#76-权限问题处理)
+- [8. 与同类工具对比](#8-与同类工具对比)
+- [9. 多服务器配置管理策略](#9-多服务器配置管理策略)
 
 ---
 
@@ -39,9 +39,9 @@
 
 - **安全可靠**：完整保留文件权限、属主、类型，支持精确还原。
 - **声明式管理**：通过 YAML 配置文件定义备份规则，可版本化、可复用。
-- **Git 原生集成**：备份结果即 Git 仓库，天然支持历史追溯、差异对比、远程同步。
 - **轻量无侵入**：不修改原系统目录，仅在独立数据仓库中维护镜像。
 - **生产就绪**：支持交互确认、分级日志、错误还原，避免误操作。
+- **Git 集成**：可与 Git 结合使用，实现历史追溯、差异对比、远程同步。
 - **智能补全**：支持命令和模块名称的自动补全功能。
 
 ---
@@ -50,41 +50,21 @@
 
 | 特性 | 说明 |
 |------|------|
-| ✅ **1:1 目录镜像** | `mirror/etc/ssh/sshd_config` 与系统路径完全一致 |
-| ✅ **元数据持久化** | 自动保存 `mode/uid/gid/type` 到 `.meta` 文件 |
-| ✅ **YAML 配置驱动** | 声明式定义模块、路径、父路径、脚本钩子 |
-| ✅ **脚本钩子扩展** | 支持任意 shell/python 脚本处理复杂备份逻辑 |
-| ✅ **权限感知** | `backup` 无需 root，`restore` 强制提权 |
-| ✅ **日志轮转** | 自动保留最近 N 行日志，避免磁盘占满 |
-| ✅ **模块化操作** | 支持全量或按模块 (`mod`) 粒度备份/还原 |
-| ✅ **权限查看** | `perms` 命令可查看备份文件的权限信息 |
-| ✅ **模块列表** | `ls` 命令可列出所有模块及详细信息 |
+| **1:1 目录镜像** | `mirror/etc/ssh/sshd_config` 与系统路径完全一致 |
+| **元数据持久化** | 自动保存 `mode/uid/gid/type` 到 `.meta` 文件 |
+| **YAML 配置驱动** | 声明式定义模块、路径、父路径、脚本钩子 |
+| **脚本钩子扩展** | 支持任意 shell/python 脚本处理复杂备份逻辑 |
+| **权限感知** | `backup` 无需 root，`restore` 强制提权 |
+| **简单日志轮转** | 自动保留最近 N 行日志，避免磁盘占满 |
+| **模块化操作** | 支持全量或按模块 (`mod`) 粒度备份/还原 |
+| **权限查看** | `perms` 命令可查看备份文件的权限信息 |
+| **模块列表** | `ls` 命令可列出所有模块及详细信息 |
 
 ---
 
-## 3. 整体架构
+## 3. 低耦合设计
 
-```text
-+------------------+       +---------------------+
-|   confmirror     |       |   Data Repository   |
-|   (Tool Repo)    |<----->|  (Config Mirror)    |
-+------------------+       +---------------------+
-        |                           |
-        | confmirror.yaml → backup_root | confmirror.yaml
-        | CLI commands              | mirror/
-        |                           | hooks/
-        v                           v
-    User Interaction           Git Version Control
-```
-
-- **工具仓库**：提供通用逻辑（`confmirror` 命令）
-- **数据仓库**：存储特定环境的配置镜像（每个服务器/环境一个）
-
----
-
-## 4. 低耦合设计
-
-confmirror 采用低耦合设计，与 Git 操作完全解耦，支持多种 Git 工作流：
+confmirror 采用低耦合设计，配置即文件，且与 Git 操作解耦，支持多种 Git 工作流：
 
 - **Git 功能独立**：Git 的 submodule、sparse-checkout、branch 等功能可单独使用
 - **灵活部署**：支持完整克隆、部分检出、多仓库管理等多种部署方式
@@ -93,7 +73,7 @@ confmirror 采用低耦合设计，与 Git 操作完全解耦，支持多种 Git
 
 ---
 
-## 5. 目录结构
+## 4. 目录结构
 
 ### 4.1 工具仓库（`confmirror/`）
 
@@ -152,29 +132,26 @@ confmirror-data/                # ← 数据仓库
 
 ```yaml
 settings:
-  name: "web-server"             # 可选，默认为当前目录名
-  backup_root: "./mirror"        # 镜像根目录
+  name: "my-config"
+  backup_root: "./mirror"       # 镜像根目录
   script_hooks_dir: "./script-hooks"    # 脚本钩子目录
-  log_dir: "./logs"              # 日志目录
-  git_auto_commit: true          # 是否自动提交到 Git
-  git_auto_push: false           # 是否自动推送到远程
+  log_dir: "./logs"             # 日志目录
+  git_auto_commit: true         # 是否自动提交到 Git
+  git_auto_push: false          # 是否自动推送到远程
 
 modules:
   - name: "sshd"
     include_paths:
       - "/etc/ssh/sshd_config"
 
-  - name: "ufw"
-    script: "ufw/script.sh"      # 相对于 script-hooks/
-
-  - name: "traefik"
-    parent_path: "/data/dockerapps/traefik/"
+  - name: "nginx"
+    parent_path: "/etc/nginx"
     include_paths:
-      - docker-compose.yml
-      - traefik.yml
-      - dynamic/
-    exclude_paths:
-      - "*.log"                  # 排除日志文件
+      - "nginx.conf"
+      - "sites-available/default"
+
+  - name: "ufw"
+    script: "ufw/script.sh"      # 相对于 script-hooks/ 的脚本路径
 ```
 
 字段说明：
@@ -188,7 +165,7 @@ modules:
 
 > ⚠️ `include_paths` 与 `script` 互斥，优先使用 `script`。
 
-> 💡 **注意**：配置文件支持自动验证功能，能够检测YAML语法错误（如制表符、括号不匹配等）并提供清晰的错误信息，帮助您快速定位和修复配置问题。
+> 💡 **注意**：配置文件支持自动验证功能，能够检测YAML语法错误（如制表符、括号不匹配等）并提供清晰的错误信息，帮助快速定位和修复配置问题。
 
 ---
 
@@ -218,7 +195,7 @@ modules:
    - **文件**：`cp` + `chmod` + `chown`
    - **目录**：`rsync` 同步内容 + 设置目录属性
 4. **严格不删除**：仅覆盖/新增，不删除目标端额外文件
-5. **交互确认**：`restore-all` 需输入 `YES`
+5. **交互确认**：全量备份和恢复需二次确认，防止误操作。
 
 ---
 
@@ -248,7 +225,7 @@ modules:
 
 ### 5.5 权限查看功能
 
-- 新增 `perms` 命令，用于查看备份文件的权限信息
+- `perms` 命令，用于快速查看备份文件和源文件的权限信息
 - 支持按模块或路径查看权限详情
 - 显示文件类型、权限模式、所有者等信息
 - 使用方法：
@@ -264,7 +241,7 @@ modules:
 
 ### 5.6 模块列表功能
 
-- 新增 `ls` 命令，用于列出所有模块
+- `ls` 命令，用于列出所有模块
 - 支持查看模块详细信息
 - 使用方法：
   ```bash
@@ -277,7 +254,33 @@ modules:
 
 ---
 
-### 5.7 元数据管理 (`.meta` 文件)
+### 5.7 差异比较功能
+
+- `diff` 命令，用于比较源文件与备份文件的差异
+- 支持按模块或路径进行差异对比
+- 显示内容和元数据的详细差异
+- 使用方法：
+  ```bash
+  # 比较指定模块的所有文件
+  confmirror diff --module sshd
+  
+  # 比较指定路径的文件
+  confmirror diff /etc/ssh/sshd_config
+  
+  # 显示详细内容差异
+  confmirror diff --module sshd --detail
+  ```
+
+- 功能特点：
+  - 比较文件内容是否发生变化
+  - 检查元数据（权限、属主、类型）是否一致
+  - 显示文件大小、修改时间等基本信息
+  - 支持统一差异格式（Unified Diff）显示内容差异
+  - 对于目录，比较元数据信息
+
+---
+
+### 5.8 元数据管理 (`.meta` 文件)
 
 每个备份文件/目录旁生成同名 `.meta` 文件：
 
@@ -301,7 +304,7 @@ type:dir
 
 ---
 
-### 5.8 权限与安全
+### 5.9 权限与安全
 
 | 操作 | 权限要求 | 说明 |
 |------|--------|------|
@@ -313,7 +316,7 @@ type:dir
 
 ---
 
-### 5.9 日志系统
+### 5.10 日志系统
 
 - **日志文件**：默认 `./logs/{name}.log`（若未指定文件名，则使用 settings.name）
 - **格式**：`[2026-01-25 20:00:00] [INFO] 消息`
@@ -349,6 +352,15 @@ confmirror perms --module sshd
 
 # 查看路径权限信息
 confmirror perms /etc/ssh/sshd_config
+
+# 比较模块文件差异
+confmirror diff --module sshd
+
+# 比较指定路径文件差异
+confmirror diff /etc/ssh/sshd_config
+
+# 显示详细差异
+confmirror diff --module sshd --detail
 
 # 列出所有模块
 confmirror ls
@@ -428,9 +440,6 @@ sudo ./confmirror restore --module sshd
 ```bash
 # 使用完整路径执行提权
 sudo $(which confmirror) backup
-
-# 或者使用 Python 模块方式
-sudo python -m src.confmirror.cli backup
 ```
 
 ---
@@ -450,14 +459,38 @@ sudo python -m src.confmirror.cli backup
 
 confmirror 支持多种方式管理多台服务器的配置备份，以下是两种主要策略：
 
-### 9.1 单一仓库管理（推荐用于关联服务器）
+### 9.1 独立仓库管理
 
-使用一个仓库管理所有服务器配置，通过 Git 的 sparse checkout 功能实现每台服务器只拉取自己的配置。
+为每台服务器创建独立的配置仓库，实现完全隔离。
+
+#### 目录结构
+```
+config-server1/      # server1 的配置
+├── confmirror.yaml
+├── mirror/
+├── script-hooks/
+└── logs/
+
+config-server2/     # server2 的配置
+├── confmirror.yaml
+├── mirror/
+├── script-hooks/
+└── logs/
+
+config-shared/      # 共享配置
+├── common-scripts/
+└── templates/
+
+```
+
+### 9.2 单一仓库管理
+
+使用一个仓库管理所有服务器配置，通过 Git 的 sparse checkout 功能实现每台服务器只拉取自己的配置。也可以使用分支来管理不同服务器的配置，下面以sparse checkout为例说明。
 
 #### 目录结构
 ```
 backup-repo/
-├── mainserver/
+├── server1/
 │   ├── confmirror.yaml
 │   ├── mirror/
 │   │   ├── etc/
@@ -470,7 +503,7 @@ backup-repo/
 │   │           └── .bashrc
 │   ├── script-hooks/
 │   └── logs/
-├── routeserver/
+├── server2/
 │   ├── confmirror.yaml
 │   ├── mirror/
 │   │   ├── etc/
@@ -490,53 +523,6 @@ backup-repo/
 └── README.md
 ```
 
-#### 每台服务器配置示例
-
-1. **mainserver/confmirror.yaml**:
-```yaml
-settings:
-  name: "mainserver"
-  backup_root: "./mirror"
-  script_hooks_dir: "./script-hooks"
-  log_dir: "./logs"
-  git_auto_commit: true
-  git_auto_push: false
-
-modules:
-  - name: "sshd"
-    include_paths:
-      - "/etc/ssh/sshd_config"
-  - name: "nginx"
-    include_paths:
-      - "/etc/nginx/nginx.conf"
-      - "/etc/nginx/sites-available/default"
-  - name: "users"
-    include_paths:
-      - "/home/user/.bashrc"
-```
-
-2. **routeserver/confmirror.yaml**:
-```yaml
-settings:
-  name: "routeserver"
-  backup_root: "./mirror"
-  script_hooks_dir: "./script-hooks"
-  log_dir: "./logs"
-  git_auto_commit: true
-  git_auto_push: false
-
-modules:
-  - name: "network"
-    include_paths:
-      - "/etc/network/routes.conf"
-  - name: "firewall"
-    include_paths:
-      - "/etc/firewall/iptables.rules"
-  - name: "admin"
-    include_paths:
-      - "/home/admin/.bashrc"
-```
-
 #### 配置 sparse checkout
 
 在每台服务器上执行以下操作：
@@ -549,12 +535,12 @@ git config core.sparseCheckout true
 
 2. 编辑 `.git/info/sparse-checkout` 文件，添加对应服务器的目录：
 ```bash
-# 对于 mainserver，添加以下内容到 .git/info/sparse-checkout
-/mainserver/*
+# 对于 server1，添加以下内容到 .git/info/sparse-checkout
+/server1/*
 /shared/*
 
-# 对于 routeserver，添加以下内容到 .git/info/sparse-checkout
-/routeserver/*
+# 对于 server2，添加以下内容到 .git/info/sparse-checkout
+/server2/*
 /shared/*
 ```
 
@@ -562,85 +548,4 @@ git config core.sparseCheckout true
 ```bash
 git read-tree -m -u HEAD
 ```
-
-#### 优点
-- 集中管理所有服务器配置
-- 每台服务器只拉取自己的配置，节省空间和带宽
-- 便于备份和恢复操作
-- 支持统一的版本控制策略
-- 共享脚本和模板可以放在一个位置
-
-#### 缺点
-- 仓库会变得越来越大，包含所有服务器的配置历史
-- 权限控制不够精细
-- 不同服务器的配置可能有不同的安全要求
-
-### 9.2 独立仓库管理（推荐用于独立服务器）
-
-为每台服务器创建独立的配置仓库，实现完全隔离。
-
-#### 目录结构
-```
-config-mainserver/      # mainserver 的配置
-├── confmirror.yaml
-├── mirror/
-├── script-hooks/
-└── logs/
-
-config-routeserver/     # routeserver 的配置
-├── confmirror.yaml
-├── mirror/
-├── script-hooks/
-└── logs/
-
-config-shared/          # 共享脚本和模板
-├── common-scripts/
-└── templates/
-```
-
-#### 配置示例
-
-与单一仓库管理相同，只是每个服务器有独立的仓库。
-
-#### 优点
-- 每个服务器的配置完全隔离
-- 更好的安全性，可以根据需要分配访问权限
-- 仓库体积较小，操作更快
-- 更容易管理不同的备份策略和频率
-- 故障隔离，一台服务器的问题不会影响其他服务器
-
-#### 缺点
-- 需要管理多个仓库
-- 难以统一查看所有配置状态
-- 共享配置和脚本需要额外处理
-
-### 9.3 推荐方案
-
-根据实际需求，我们建议采用**混合方案**：
-
-1. **独立仓库为主**：为每台重要服务器创建独立的配置仓库，便于精细化管理
-2. **共享组件仓库**：创建一个共享仓库存放通用脚本、模板和配置片段
-3. **中央仪表板**：使用一个简单的仓库或工具来监控所有配置仓库的状态
-
-对于紧密关联的服务器（如同一业务线的服务器），单一仓库配合 sparse checkout 是可行的；对于属于不同业务线或安全域的服务器，建议使用独立仓库。
-
 ---
-
-## 10. 未来扩展
-
-### 10.1 有计划实现的功能
-
-- [ ] **远程备份仓库**：利用Git原生功能，轻松实现远程仓库备份与同步
-- [ ] **差异对比功能**：实现单文件级别的差异对比，支持源文件与备份文件的比较
-- [ ] **增量备份支持**：虽系统配置文件通常较小，但增量备份仍是重要的性能优化方向
-- [ ] **更多脚本语言支持**：在Shell基础上，扩展对Python等脚本语言的支持
-
-### 10.2 不计划实现的功能
-
-- ❌ **定时备份任务**：用户可通过cron等系统工具实现，保持confmirror的单一职责
-- ❌ **加密备份**：Git本身提供基本安全防护，额外加密会增加复杂度和使用负担
-- ❌ **图形界面管理工具**：CLI更适合系统配置管理场景，图形界面价值有限
-
-### 10.3 已实现的功能增强
-
-- ✅ **配置文件验证**：自动检测YAML语法错误（如制表符、括号不匹配等）并提供清晰的错误信息
