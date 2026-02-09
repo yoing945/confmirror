@@ -17,6 +17,7 @@ classifiers = [
 dependencies = [
     "PyYAML>=6.0",
     "click>=8.0",
+    "pathspec>=0.10",
 ]
 
 [project.optional-dependencies]

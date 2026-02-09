@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 from typing import Dict, Optional
+import pathspec
 
 from confmirror.config import ConfigKeys
 
@@ -19,25 +20,27 @@ def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "
     Returns:
         bool: 如果应该排除则返回True，否则返回False
     """
-    path_str = str(path)
-
-    for pattern in exclude_patterns:
-        # 如果设置了 parent_path，将排除模式视为相对于 parent_path
-        if parent_path:
-            # 构造相对于 parent_path 的完整模式
-            relative_pattern = str(Path(parent_path) / pattern)
-            # 检查路径是否匹配相对于 parent_path 的模式
-            if (fnmatch.fnmatch(path_str, relative_pattern) or
-                path.match(relative_pattern)):
-                return True
-        else:
-            # 如果没有 parent_path，只检查原始排除模式
-            if (fnmatch.fnmatch(path_str, pattern) or
-                fnmatch.fnmatch(path.name, pattern) or
-                path.match(pattern)):
-                return True
-
-    return False
+    if not exclude_patterns:
+        return False
+    
+    # 使用 pathspec 创建一个 gitignore 风格的路径规范
+    spec = pathspec.GitIgnoreSpec.from_lines(exclude_patterns)
+    if spec is None:
+        return False
+    
+    # 获取相对于 parent_path 的路径
+    if parent_path:
+        try:
+            rel_path = path.relative_to(parent_path)
+            path_str = str(rel_path.as_posix())  # 使用 posix 格式以匹配 git 规范
+        except ValueError:
+            # 如果路径不在 parent_path 下，则使用原始路径
+            path_str = str(path.as_posix())
+    else:
+        path_str = str(path.as_posix())
+    
+    # 使用 pathspec 检查路径是否匹配排除模式
+    return spec.match_file(path_str)
 
 
 def get_src_path_from_backup_full_path(config:Dict, full_path_str:str)->Path:

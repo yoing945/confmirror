@@ -104,7 +104,7 @@ sudo confmirror restore
 | `name` | 模块名称 | 是 |
 | `include_paths` | 要备份的路径列表 | 否* |
 | `parent_path` | 拼接到 `include_paths` 前的父路径 | 否 |
-| `exclude_paths` | 要排除的路径模式（支持通配符） | 否 |
+| `exclude_paths` | 要排除的路径模式 | 否 |
 | `script` | 相对于 `script_hooks_dir` 的脚本路径 | 否* |
 
 > * `include_paths` 和 `script` 二选一，不能同时使用
@@ -119,7 +119,13 @@ modules:
       - "/etc/ssh/sshd_config"
       - "/etc/ssh/ssh_config.d/"
     exclude_paths:
-      - "*.bak"
+      - "*.bak"           # 排除所有 .bak 文件
+      - "*.tmp"           # 排除所有 .tmp 文件
+      - "config.bak"      # 排除特定文件
+      - "temp/"           # 排除目录
+      - "*/temp/*"        # 排除所有层级的 temp 目录中的文件
+      - "**/logs/"        # 排除任意深度的 logs 目录
+      - "!important.log"  # 例外：不排除 important.log 文件（即使它匹配了 *.log 模式）
 
   # 2. 脚本备份模块
   - name: "ufw-rules"
@@ -133,8 +139,23 @@ modules:
       - "traefik/traefik.yml"
       - "traefik/dynamic/"
     exclude_paths:
-      - "*.log"
+      - "*.log"           # 排除所有 .log 文件
+      - "**/cache/"       # 排除任意深度的 cache 目录
+      - "temp*"           # 排除以 temp 开头的文件或目录
 ```
+
+### 排除模式说明
+
+ConfMirror 的 `exclude_paths` 支持 Git 风格的模式匹配，类似于 `.gitignore` 文件的语法：
+
+- `*.txt` - 匹配所有 .txt 文件
+- `*.log` - 匹配所有 .log 文件
+- `dir/` - 匹配名为 dir 的目录
+- `temp/` - 排除名为 temp 的目录及其内容
+- `*/temp/*` - 匹配任意一级目录下的 temp 目录中的文件
+- `**/temp` - 匹配任意深度的名为 temp 的文件或目录
+- `!important.log` - 作为例外，不排除 important.log 文件（必须放在 *.log 规则之后）
+- `a/**/b` - 匹配 a 和 b 之间有任意层级目录的路径，如 a/x/y/z/b
 
 ## 📋 命令参考
 
