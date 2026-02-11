@@ -212,6 +212,12 @@ confmirror diff --module <module-name>
 # 比较指定路径的差异
 confmirror diff <path>
 
+# 手动同步到远端仓库
+confmirror sync
+
+# 使用自定义提交信息同步到远端仓库
+confmirror sync --message "自定义提交信息"
+
 # 显示版本
 confmirror --version
 

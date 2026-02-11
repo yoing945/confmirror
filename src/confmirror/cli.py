@@ -1,6 +1,7 @@
 import logging
 import sys
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -144,13 +145,15 @@ def backup(module, force, target_paths):
             execute_backup(config, logger, force=force)
 
         if settings.get(ConfigKeys.GIT_AUTO_COMMIT):
-            msg = f"confmirror 备份: {name}"
-            git_auto_commit_and_push(
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            msg = f"[{timestamp}] 自动同步: {name}"
+            success =git_auto_commit_and_push(
                 repo_path=Path.cwd(),
                 message=msg,
                 auto_push=settings.get(ConfigKeys.GIT_AUTO_PUSH, False)
             )
-            logger.info("Git 提交完成")
+            if success:
+                logger.info("Git 提交完成")
 
         logger.info("✅ 备份完成")
     except Exception as e:
@@ -288,6 +291,47 @@ def diff(module, detail, target_paths):
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
         click.echo(f"❌ 差异对比失败: {e}", err=True)
+        sys.exit(1)
+
+@main.command()
+@click.option('-m', '--message', type=str, help='自定义提交信息')
+def sync(message):
+    """手动触发快速同步到远端仓库"""
+    try:
+        config = load_config()
+
+        if not config:
+            click.echo("❌ 配置加载失败，无法执行同步任务", err=True)
+            sys.exit(1)
+
+        settings: dict = config[ConfigKeys.SECTION_SETTINGS]
+        name = settings[ConfigKeys.NAME]
+
+        logger = setup_logger(config)
+        logger.info("开始执行手动同步到远端仓库")
+
+        # 执行 Git 提交和推送
+        if message:
+            msg = message
+        else:
+            # 使用默认消息格式
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            msg = f"[{timestamp}] 手动同步: {name}"
+        success = git_auto_commit_and_push(
+            repo_path=Path.cwd(),
+            message=msg,
+            auto_push=True  # 手动同步总是推送
+        )
+
+        if success:
+            logger.info("✅ 手动同步完成")
+        else:
+            logger.error("❌ 手动同步失败")
+            sys.exit(1)
+
+    except Exception as e:
+        logger = logging.getLogger(APP_NAME)
+        logger.error(traceback.format_exc())
         sys.exit(1)
 
 
