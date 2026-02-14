@@ -1,13 +1,19 @@
 """全局配置管理模块"""
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict
 
 import yaml
 
 # 全局配置文件路径，遵循 XDG Base Directory 规范
-CONFIG_DIR = Path.home() / ".config" / "confmirror"
+# 检测是否有 SUDO_USER 环境变量，如果有则表示使用了 sudo 提权，应使用原始用户的主目录
+original_user_home = Path(os.environ.get('SUDO_USER_HOME') or 
+                          (os.path.expanduser('~{}'.format(os.environ.get('SUDO_USER'))) 
+                           if os.environ.get('SUDO_USER') else 
+                           str(Path.home())))
+CONFIG_DIR = original_user_home / ".config" / "confmirror"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 
 # 全局配置键
