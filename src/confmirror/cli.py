@@ -16,12 +16,26 @@ from .diff import diff_paths, diff_module
 from .gitops import git_auto_commit_and_push
 from .logger import setup_logger
 from . import __version__
+from .global_config import (
+    load_global_config, 
+    save_global_config, 
+    get_global_config_value, 
+    set_global_config_value, 
+    remove_global_config_value,
+    GlobalConfigKeys
+)
 
 
 def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
     """自动补全模块名称"""
     try:
-        config = load_config()
+        # 从上下文中获取配置路径参数
+        conf_ctx = ctx.find_object(ConfMirrorContext)
+        if conf_ctx:
+            config_path = conf_ctx.config_path
+        else:
+            config_path = None
+        config = load_config(config_path)
         if config and ConfigKeys.SECTION_MODULES in config:
             modules = config[ConfigKeys.SECTION_MODULES]
             # 返回匹配不完整输入的模块名称
@@ -30,6 +44,12 @@ def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
     except:
         # 如果配置加载失败，返回空列表
         return []
+
+
+class ConfMirrorContext:
+    """用于在命令之间传递配置路径的上下文类"""
+    def __init__(self, config_path=None):
+        self.config_path = config_path
 
 
 def gen_help_option():
@@ -62,6 +82,21 @@ def gen_version_option():
         help="显示版本信息"
     )
 
+def gen_config_option():
+    """创建一个自定义的配置选项，支持 -c 和 --config"""
+    def set_config(ctx, param, value):
+        if value and not ctx.resilient_parsing:
+            ctx.ensure_object(ConfMirrorContext).config_path = value
+    
+    return click.Option(
+        ['-c', '--config'],
+        type=click.Path(exists=True),
+        expose_value=False,
+        callback=set_config,
+        help="指定配置文件路径"
+    )
+
+
 class CustomCommand(click.Command):
     """自定义命令类，支持-h简写显示帮助"""
     def get_help_option(self, ctx):
@@ -72,14 +107,14 @@ class CustomGroup(click.Group):
     def get_help_option(self, ctx):
         return gen_help_option()
 
-
     def get_params(self, ctx):
         # 添加版本选项到顶级命令
         rv = super().get_params(ctx)
         # 仅在顶层命令添加版本选项，不在子命令中添加
         if ctx.parent is None:
             version_opt = gen_version_option()
-            rv = [version_opt] + list(rv)
+            config_opt = gen_config_option()
+            rv = [version_opt, config_opt] + list(rv)
         return rv
 
     def command(self, *args, **kwargs):
@@ -94,18 +129,23 @@ class CustomGroup(click.Group):
 
 
 @click.group(cls=CustomGroup)
-def main():
+@click.pass_context
+def main(ctx):
+    ctx.ensure_object(ConfMirrorContext)
     pass
 
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要备份的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖备份模式')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
-def backup(module, force, target_paths):
+@click.pass_context
+def backup(ctx, module, force, target_paths):
     """执行备份操作"""
     try:
+        # 从上下文获取配置路径
+        config_path = ctx.find_object(ConfMirrorContext).config_path
         # 加载配置文件
-        config = load_config()
+        config = load_config(config_path)
 
         # 检查配置是否加载成功
         if not config:
@@ -148,7 +188,7 @@ def backup(module, force, target_paths):
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = f"[{timestamp}] 自动同步: {name}"
             success =git_auto_commit_and_push(
-                repo_path=Path.cwd(),
+                repo_path=Path(config_path).parent if config_path else Path.cwd(),  # 使用配置文件所在目录或当前工作目录
                 message=msg,
                 auto_push=settings.get(ConfigKeys.GIT_AUTO_PUSH, False)
             )
@@ -165,10 +205,13 @@ def backup(module, force, target_paths):
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要还原的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖还原模式（默认为差异还原）')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
-def restore(module, force, target_paths):
+@click.pass_context
+def restore(ctx, module, force, target_paths):
     """执行还原操作"""
     try:
-        config = load_config()
+        # 从上下文获取配置路径
+        config_path = ctx.find_object(ConfMirrorContext).config_path
+        config = load_config(config_path)
 
         # 检查配置是否加载成功
         if not config:
@@ -208,10 +251,13 @@ def restore(module, force, target_paths):
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='查看指定模块的权限信息')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
-def perms(module, target_paths):
+@click.pass_context
+def perms(ctx, module, target_paths):
     """查看备份文件的权限信息"""
     try:
-        config = load_config()
+        # 从上下文获取配置路径
+        config_path = ctx.find_object(ConfMirrorContext).config_path
+        config = load_config(config_path)
 
         # 检查配置是否加载成功
         if not config:
@@ -241,10 +287,13 @@ def perms(module, target_paths):
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='列出指定模块的信息')
 @click.option('-d', '--detail', is_flag=True, help='输出模块的详细信息')
-def ls(module, detail):
+@click.pass_context
+def ls(ctx, module, detail):
     """列出所有可用模块"""
     try:
-        config = load_config()
+        # 从上下文获取配置路径
+        config_path = ctx.find_object(ConfMirrorContext).config_path
+        config = load_config(config_path)
 
         # 检查配置是否加载成功
         if not config:
@@ -267,10 +316,13 @@ def ls(module, detail):
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='对比整个模块的所有文件')
 @click.option('-d', '--detail', is_flag=True, help='输出详细的文件内容差异')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
-def diff(module, detail, target_paths):
+@click.pass_context
+def diff(ctx, module, detail, target_paths):
     """对比源文件与备份文件的差异"""
     try:
-        config = load_config()
+        # 从上下文获取配置路径
+        config_path = ctx.find_object(ConfMirrorContext).config_path
+        config = load_config(config_path)
 
         if not config:
             click.echo("❌ 配置加载失败", err=True)
@@ -295,10 +347,13 @@ def diff(module, detail, target_paths):
 
 @main.command()
 @click.option('-m', '--message', type=str, help='自定义提交信息')
-def sync(message):
+@click.pass_context
+def sync(ctx, message):
     """手动触发快速同步到远端仓库"""
     try:
-        config = load_config()
+        # 从上下文获取配置路径
+        config_path = ctx.find_object(ConfMirrorContext).config_path
+        config = load_config(config_path)
 
         if not config:
             click.echo("❌ 配置加载失败，无法执行同步任务", err=True)
@@ -318,7 +373,7 @@ def sync(message):
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = f"[{timestamp}] 手动同步: {name}"
         success = git_auto_commit_and_push(
-            repo_path=Path.cwd(),
+            repo_path=Path(config_path).parent if config_path else Path.cwd(),  # 使用配置文件所在目录或当前工作目录
             message=msg,
             auto_push=True  # 手动同步总是推送
         )
@@ -333,6 +388,43 @@ def sync(message):
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
         sys.exit(1)
+
+
+@main.group()
+def global_config_path():
+    """管理全局配置路径"""
+    pass
+
+
+@global_config_path.command()
+@click.argument('path', type=click.Path(exists=True))
+def set(path):
+    """设置全局配置文件路径"""
+    success = set_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH, path)
+    if success:
+        click.echo(f"✅ 全局配置路径已设置为 {path}")
+    else:
+        click.echo(f"❌ 设置全局配置路径失败", err=True)
+
+
+@global_config_path.command()
+def remove():
+    """移除全局配置文件路径"""
+    success = remove_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH)
+    if success:
+        click.echo(f"✅ 全局配置路径已移除")
+    else:
+        click.echo(f"❌ 移除全局配置路径失败", err=True)
+
+
+@global_config_path.command()
+def show():
+    """显示当前全局配置文件路径"""
+    path = get_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH)
+    if path:
+        click.echo(path)
+    else:
+        click.echo("未设置全局配置路径")
 
 
 if __name__ == '__main__':

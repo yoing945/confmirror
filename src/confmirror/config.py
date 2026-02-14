@@ -1,9 +1,12 @@
 import logging
 from pathlib import Path
+from typing import Optional
 
 import yaml
 import yaml.parser
 import yaml.scanner
+
+from .global_config import get_global_config_value, GlobalConfigKeys
 
 CONFIG_FILENAME = "confmirror.yaml"
 APP_NAME = "confmirror"
@@ -99,14 +102,25 @@ def validate_config_structure(config: dict, logger) -> bool:
     return True
 
 
-def load_config() -> dict:
-    config_path = Path.cwd() / CONFIG_FILENAME
+def load_config(custom_config_path: Optional[str] = None) -> dict:
+    # 优先使用传入的自定义配置路径
+    if custom_config_path:
+        config_path = Path(custom_config_path).expanduser()
+    else:
+        # 其次尝试从全局配置中获取默认配置路径
+        global_config_path = get_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH)
+        if global_config_path:
+            config_path = Path(global_config_path).expanduser()
+        else:
+            # 最后使用当前目录下的默认配置文件
+            config_path = Path.cwd() / CONFIG_FILENAME
+
     logger = logging.getLogger(APP_NAME)
 
     if not config_path.exists():
         logger.error(
-            f"❌ 当前目录未找到 {CONFIG_FILENAME}。\n"
-            "请确保在项目根目录运行命令，并创建该文件。"
+            f"❌ 未找到配置文件: {config_path}。\n"
+            f"请确保配置文件存在，或使用 -c/--config 指定配置文件路径，或通过 `confmirror global_config_path set <path>` 设置全局配置路径。"
         )
         return {}
 
@@ -114,7 +128,7 @@ def load_config() -> dict:
     is_valid, error_msg = validate_yaml_syntax(config_path)
     if not is_valid:
         logger.error(f"❌ 配置文件格式错误: {error_msg}")
-        logger.error(f"请检查 {CONFIG_FILENAME} 文件格式是否正确")
+        logger.error(f"请检查 {config_path} 文件格式是否正确")
         return {}
 
     try:
@@ -125,11 +139,11 @@ def load_config() -> dict:
         return {}
 
     if not isinstance(config, dict):
-        raise ValueError(f"{CONFIG_FILENAME} 必须是一个 YAML 映射(dict)")
+        raise ValueError(f"{config_path} 必须是一个 YAML 映射(dict)")
     
     # 验证配置结构
     if not validate_config_structure(config, logger):
-        logger.error(f"请修正 {CONFIG_FILENAME} 文件中的配置结构问题")
+        logger.error(f"请修正 {config_path} 文件中的配置结构问题")
         return {}
 
 
@@ -141,7 +155,7 @@ def load_config() -> dict:
         settings = settings_raw
 
     # 默认值
-    settings.setdefault(ConfigKeys.NAME, Path.cwd().name)
+    settings.setdefault(ConfigKeys.NAME, config_path.parent.name)  # 使用配置文件所在目录名作为默认名称
     settings.setdefault(ConfigKeys.BACKUP_ROOT, "./mirror")
     settings.setdefault(ConfigKeys.SCRIPT_HOOKS_DIR, "./script-hooks")
     settings.setdefault(ConfigKeys.LOG_DIR, "./logs")
@@ -149,8 +163,8 @@ def load_config() -> dict:
     settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
     settings.setdefault(ConfigKeys.LOG_MAX_LINES, 1000)  # 默认1000行
 
-    # 路径标准化（相对于当前工作目录）
-    base = Path.cwd()
+    # 路径标准化（相对于配置文件所在目录）
+    base = config_path.parent
     settings[ConfigKeys.BACKUP_ROOT] = (base / settings[ConfigKeys.BACKUP_ROOT]).resolve()
     settings[ConfigKeys.SCRIPT_HOOKS_DIR] = (base / settings[ConfigKeys.SCRIPT_HOOKS_DIR]).resolve()
     settings[ConfigKeys.LOG_DIR] = (base / settings[ConfigKeys.LOG_DIR]).resolve()
@@ -177,9 +191,9 @@ def load_config() -> dict:
             parent_path = mod[ConfigKeys.MOD_PARENT_PATH]
             if parent_path:
                 parent_path_path = Path(parent_path)
-                # 如果是相对路径，则相对于当前工作目录转换为绝对路径
+                # 如果是相对路径，则相对于配置文件所在目录转换为绝对路径
                 if not parent_path_path.is_absolute():
-                    parent_path_path = Path.cwd() / parent_path_path
+                    parent_path_path = config_path.parent / parent_path_path
                 mod[ConfigKeys.MOD_PARENT_PATH] = str(parent_path_path.resolve())
 
         # 设置默认脚本语言
