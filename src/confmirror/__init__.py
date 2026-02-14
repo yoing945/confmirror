@@ -15,10 +15,10 @@ try:
 except ImportError:
     __version__ = "0.1.0"
 
-from .config import load_config, ConfigKeys
 from .backup import execute_backup
-from .restore import execute_restore
+from .config import ConfigKeys, load_config
 from .logger import setup_logger
+from .restore import execute_restore
 
 __all__ = [
     'load_config',

@@ -1,8 +1,9 @@
 import fnmatch
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from typing import Dict, Optional
+
 import pathspec
 
 from confmirror.config import ConfigKeys

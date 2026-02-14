@@ -1,16 +1,16 @@
-import os
-import shutil
-import subprocess
 import glob
-import fnmatch
+import shutil
 from pathlib import Path
 from typing import Optional
 
 from confmirror.config import ConfigKeys
 from confmirror.diff import compare_meta, same_file
-from confmirror.utils import run_script, should_exclude_path, find_matching_module_with_path
 from confmirror.meta import write_meta
-import hashlib
+from confmirror.utils import (
+    find_matching_module_with_path,
+    run_script,
+    should_exclude_path,
+)
 
 
 def execute_backup(config: dict, logger, target_module_name: Optional[str] = None,

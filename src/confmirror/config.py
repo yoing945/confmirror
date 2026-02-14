@@ -6,7 +6,7 @@ import yaml
 import yaml.parser
 import yaml.scanner
 
-from .global_config import get_global_config_value, GlobalConfigKeys
+from .global_config import GlobalConfigKeys, get_global_config_value
 
 CONFIG_FILENAME = "confmirror.yaml"
 APP_NAME = "confmirror"

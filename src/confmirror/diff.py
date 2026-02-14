@@ -1,21 +1,22 @@
 """
 差异对比功能模块 - 支持单文件级别的源文件与备份文件比较
 """
-import filecmp
 import difflib
-import glob
+import filecmp
 import fnmatch
+import glob
 import hashlib
 import os
-from pathlib import Path
-from typing import Optional, Tuple, List
 from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 import click
 
 from .config import ConfigKeys
-from .utils import find_matching_module_with_path, should_exclude_path
 from .meta import read_meta
+from .utils import find_matching_module_with_path, should_exclude_path
+
 
 def same_file(src:Path, dest:Path) -> bool:
     """

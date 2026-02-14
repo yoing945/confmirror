@@ -191,6 +191,43 @@ sudo confmirror restore <path1> <path2> ...
 sudo confmirror restore
 ```
 
+### 高级配置选项
+
+ConfMirror 支持通过命令行参数和全局配置来指定配置文件路径，方便在不同环境下使用不同的配置。
+
+#### 指定配置文件路径
+
+使用 `--config` 参数可以手动指定配置文件路径，而不必在当前目录下寻找 `confmirror.yaml`：
+
+```bash
+# 备份时指定配置文件路径
+confmirror backup --config /path/to/your/config.yaml
+
+# 还原时指定配置文件路径
+sudo confmirror restore --config /path/to/your/config.yaml
+
+# 使用特定配置文件执行其他命令
+confmirror ls --config /path/to/your/config.yaml
+confmirror perms --config /path/to/your/config.yaml
+```
+
+#### 管理全局配置路径
+
+通过 `global-config-path` 子命令，可以设置一个全局默认的配置文件路径，这样在没有指定 `--config` 参数且当前目录没有 `confmirror.yaml` 时，会自动使用全局配置：
+
+```bash
+# 设置全局配置文件路径
+confmirror global-config-path set /default/path/to/config.yaml
+
+# 显示当前全局配置文件路径
+confmirror global-config-path show
+
+# 移除全局配置文件路径设置
+confmirror global-config-path remove
+```
+
+全局配置文件存放在 `~/.config/confmirror/config.yaml`，遵循 XDG Base Directory 规范。
+
 ### 其他命令
 
 ```bash

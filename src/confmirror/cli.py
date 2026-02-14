@@ -7,23 +7,21 @@ from pathlib import Path
 import click
 from click import Context, Parameter
 
-from .config import APP_NAME, ConfigKeys, load_config
-from .backup import execute_backup
-from .restore import execute_restore
-from .perms import execute_perms
-from .list import execute_list
-from .diff import diff_paths, diff_module
-from .gitops import git_auto_commit_and_push
-from .logger import setup_logger
 from . import __version__
+from .backup import execute_backup
+from .config import APP_NAME, ConfigKeys, load_config
+from .diff import diff_module, diff_paths
+from .gitops import git_auto_commit_and_push
 from .global_config import (
-    load_global_config, 
-    save_global_config, 
-    get_global_config_value, 
-    set_global_config_value, 
+    GlobalConfigKeys,
+    get_global_config_value,
     remove_global_config_value,
-    GlobalConfigKeys
+    set_global_config_value,
 )
+from .list import execute_list
+from .logger import setup_logger
+from .perms import execute_perms
+from .restore import execute_restore
 
 
 def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
@@ -361,6 +359,7 @@ def sync(ctx, message):
 
         settings: dict = config[ConfigKeys.SECTION_SETTINGS]
         name = settings[ConfigKeys.NAME]
+        backup_root = settings[ConfigKeys.BACKUP_ROOT]
 
         logger = setup_logger(config)
         logger.info("开始执行手动同步到远端仓库")
@@ -373,7 +372,7 @@ def sync(ctx, message):
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = f"[{timestamp}] 手动同步: {name}"
         success = git_auto_commit_and_push(
-            repo_path=Path(config_path).parent if config_path else Path.cwd(),  # 使用配置文件所在目录或当前工作目录
+            repo_path=Path(backup_root),  # 使用配置文件所在目录
             message=msg,
             auto_push=True  # 手动同步总是推送
         )

@@ -2,7 +2,7 @@
 
 import subprocess
 from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
 import click
 
@@ -31,7 +31,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
         if result.returncode != 0:
             click.echo("⚠️  当前目录不是Git仓库，跳过Git操作")
             return False
-
+        click.echo(f"仓库路径: {repo_path}")
         # 添加所有变更
         subprocess.run(["git", "add", "."], cwd=repo_path, check=True, capture_output=True)
 

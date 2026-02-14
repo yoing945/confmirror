@@ -1,9 +1,7 @@
 # src/confmirror/logger.py
 
 import logging
-import os
 from pathlib import Path
-from datetime import datetime
 
 from confmirror.config import APP_NAME, ConfigKeys
 

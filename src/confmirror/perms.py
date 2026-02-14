@@ -1,13 +1,17 @@
 """
 权限查看功能模块
 """
-from pathlib import Path
 import glob
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import click
 
-from confmirror.utils import find_matching_module_with_path, get_src_path_from_backup_full_path, should_exclude_path
+from confmirror.utils import (
+    find_matching_module_with_path,
+    get_src_path_from_backup_full_path,
+    should_exclude_path,
+)
 
 from .config import ConfigKeys
 from .meta import read_meta
