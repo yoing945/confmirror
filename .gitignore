@@ -187,7 +187,6 @@ log-backup.log
 
 # 运行时生成的文件
 *.pid
-*.lock
 
 # 测试文件
 test-logs/
