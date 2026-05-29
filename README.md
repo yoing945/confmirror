@@ -14,8 +14,10 @@
 ## 📦 安装
 
 ```bash
-# 从 PyPI 安装
-pip install confmirror
+# 开发模式安装（当前未发布到 PyPI）
+git clone <仓库地址>
+cd confmirror
+pip install -e ".[dev]"
 ```
 
 ## 🛠️ 快速开始
@@ -106,8 +108,9 @@ sudo confmirror restore
 | `parent_path` | 拼接到 `include_paths` 前的父路径 | 否 |
 | `exclude_paths` | 要排除的路径模式 | 否 |
 | `script` | 相对于 `script_hooks_dir` 的脚本路径 | 否* |
+| `script_lang` | 脚本解释器语言，默认 `bash` | 否 |
 
-> * `include_paths` 和 `script` 二选一，不能同时使用
+> * `include_paths` 和 `script` 二者选其一；同时存在时 `script` 优先
 
 ### 模块配置示例
 
@@ -162,7 +165,7 @@ ConfMirror 的 `exclude_paths` 支持 Git 风格的模式匹配，类似于 `.gi
 ### 备份命令
 
 ```bash
-# 全量备份
+# 全量备份（有交互确认）
 confmirror backup
 
 # 备份指定模块
@@ -178,16 +181,16 @@ confmirror backup <path1> <path2> ...
 ### 还原命令
 
 ```bash
-# 还原指定模块 (需要 root 权限)
+# 还原指定模块 (建议 root，涉及写系统目录和改权限)
 sudo confmirror restore --module <module-name>
 
 # 强制覆盖还原
 sudo confmirror restore --module <module-name> --force
 
-# 还原指定路径 (需要 root 权限)
+# 还原指定路径 (建议 root)
 sudo confmirror restore <path1> <path2> ...
 
-# 全量还原 (需要 root 权限，有交互确认)
+# 全量还原 (建议 root，有交互确认)
 sudo confmirror restore
 ```
 
