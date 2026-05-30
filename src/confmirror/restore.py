@@ -20,6 +20,9 @@ def execute_restore(config: dict, logger, target_module_name: Optional[str] = No
         target_path: 指定要还原的路径
         force: 是否强制覆盖还原（默认为False，即差异还原）
     """
+    if os.name != 'nt' and os.getuid() != 0:
+        logger.warning("⚠️ 当前未以 root 身份运行，restore 操作可能因权限不足而失败。建议：sudo confmirror restore ...")
+
     if target_module_name:
         # 还原指定模块
         modules = config.get(ConfigKeys.SECTION_MODULES, [])

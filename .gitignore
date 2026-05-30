@@ -193,6 +193,7 @@ test-logs/
 test_*.py
 *_test.py
 tests/
+test-manual/
 
 example*/
 

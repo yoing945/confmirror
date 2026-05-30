@@ -208,6 +208,6 @@ def get_script_shebang(script_path: Path) -> Optional[str]:
                 else:
                     # 返回完整路径
                     return shebang.split()[-1]
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         pass
     return None

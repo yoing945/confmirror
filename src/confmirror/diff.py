@@ -54,7 +54,7 @@ def compare_content(src: Path, dest: Path) -> bool:
             # 目录比较直接返回True
             return True
         return filecmp.cmp(src, dest, shallow=False)
-    except Exception:
+    except (OSError, ValueError):
         # 如果文件比较失败，使用哈希比较
         return _compare_files_by_hash(src, dest)
 
@@ -112,7 +112,7 @@ def _compare_files_by_hash(src: Path, dest: Path) -> bool:
             return hash_obj.hexdigest()
 
         return get_file_hash(src) == get_file_hash(dest)
-    except Exception:
+    except (OSError, TypeError):
         # 如果哈希计算失败，认为文件不同
         return False
 
