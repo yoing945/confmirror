@@ -64,14 +64,14 @@ def execute_backup(config: dict, logger, target_module_name: Optional[str] = Non
             if should_exclude_path(path, all_exclude_patterns, parent_path):
                 logger.info(f"[跳过] 路径 '{path}' 被排除")
                 continue
-            backup_single_path(path, backup_root, logger, force)
+            backup_single_path(path, backup_root, logger, settings, force)
     else:
         # 全量备份
         for module in config.get(ConfigKeys.SECTION_MODULES, []):
             backup_module(module, backup_root, settings, logger, force)
 
 
-def _backup_directory(src_dir: Path, dest_dir: Path, logger, force: bool = False):
+def _backup_directory(src_dir: Path, dest_dir: Path, logger, settings: dict, force: bool = False):
     """
     备份目录及其内容
 
@@ -79,6 +79,7 @@ def _backup_directory(src_dir: Path, dest_dir: Path, logger, force: bool = False
         src_dir: 源目录
         dest_dir: 目标目录
         logger: 日志记录器
+        settings: 配置设置字典
         force: 是否强制覆盖
     """
     # 检查是否跳过（差异备份）
@@ -95,14 +96,14 @@ def _backup_directory(src_dir: Path, dest_dir: Path, logger, force: bool = False
     write_meta(dest_dir, dir_mode, src_stat.st_uid, src_stat.st_gid, "dir")
 
     # 确保备份目录可读写（关键：修改权限以确保用户可以读写和Git可以管理）
-    # 设置目录权限为用户可读写执行，组和其他用户只读执行
-    dest_dir.chmod(0o755)
+    backup_dir_mode = int(settings.get(ConfigKeys.BACKUP_DIR_MODE, "0o755"), 8)
+    dest_dir.chmod(backup_dir_mode)
 
     # 记录目录元数据写入成功的日志
     logger.info(f"[目录信息备份成功] → {src_dir} (权限:{dir_mode} 用户:{src_stat.st_uid}:{src_stat.st_gid})")
 
 
-def _backup_file(src: Path, dest: Path, logger, force: bool = False, use_hash: bool = False):
+def _backup_file(src: Path, dest: Path, logger, settings: dict, force: bool = False, use_hash: bool = False):
     """
     备份单个文件
 
@@ -110,6 +111,7 @@ def _backup_file(src: Path, dest: Path, logger, force: bool = False, use_hash: b
         src: 源文件路径
         dest: 目标文件路径
         logger: 日志记录器
+        settings: 配置设置字典
         force: 是否强制覆盖
         use_hash: 是否使用哈希比对（增量备份时）
     """
@@ -132,8 +134,9 @@ def _backup_file(src: Path, dest: Path, logger, force: bool = False, use_hash: b
         # 写入元数据（重要：在修改权限之前保存原始权限信息）
         write_meta(dest, mode, stat.st_uid, stat.st_gid, "file")
 
-        # 设置备份文件权限为用户可读写，组和其他用户只读
-        dest.chmod(0o644)
+        # 设置备份文件权限，确保当前用户和 Git 可读写
+        backup_file_mode = int(settings.get(ConfigKeys.BACKUP_FILE_MODE, "0o644"), 8)
+        dest.chmod(backup_file_mode)
 
         logger.info(f"[文件备份成功] → {src} (权限:{mode} 用户:{stat.st_uid}:{stat.st_gid})")
 
@@ -143,7 +146,7 @@ def _backup_file(src: Path, dest: Path, logger, force: bool = False, use_hash: b
         logger.error(f"[备份失败] {src}: {str(e)}")
 
 
-def backup_single_path(src: Path, mirror_root: Path, logger, force: bool = False):
+def backup_single_path(src: Path, mirror_root: Path, logger, settings: dict, force: bool = False):
     """
     备份单个路径（文件或目录）到镜像目录
 
@@ -151,6 +154,7 @@ def backup_single_path(src: Path, mirror_root: Path, logger, force: bool = False
         src: 源路径
         mirror_root: 镜像根目录
         logger: 日志记录器
+        settings: 配置设置字典
         force: 是否强制覆盖
     """
     if not src.exists():
@@ -175,10 +179,10 @@ def backup_single_path(src: Path, mirror_root: Path, logger, force: bool = False
     dest = mirror_root / str(src).lstrip('/')
 
     if src.is_file():
-        _backup_file(src, dest, logger, force)
+        _backup_file(src, dest, logger, settings, force)
     elif src.is_dir():
         # 对于目录，只备份目录本身（不递归内容）
-        _backup_directory(src, dest, logger, force)
+        _backup_directory(src, dest, logger, settings, force)
 
 
 def expand_path_patterns(path_pattern: str, parent_path: str = "", exclude_patterns: list = []) -> list:
@@ -275,9 +279,9 @@ def backup_module(module: dict, backup_root: Path, settings: dict, logger,
                 
                 # 直接处理glob结果，根据文件类型执行相应备份
                 if path.is_file():
-                    _backup_file(path, backup_root / str(path).lstrip('/'), logger, force)
+                    _backup_file(path, backup_root / str(path).lstrip('/'), logger, settings, force)
                 elif path.is_dir():
-                    _backup_directory(path, backup_root / str(path).lstrip('/'), logger, force)
+                    _backup_directory(path, backup_root / str(path).lstrip('/'), logger, settings, force)
                 else:
                     logger.warning(f"[跳过] 不支持的文件类型: {path}")
     else:

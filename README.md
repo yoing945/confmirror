@@ -96,6 +96,8 @@ sudo confmirror restore
 | `log_max_lines` | 日志最大保留行数 | `1000` |
 | `git_auto_commit` | 是否自动提交到 Git | `false` |
 | `git_auto_push` | 是否自动推送到远程 | `false` |
+| `backup_file_mode` | 备份文件在 mirror 中的权限（八进制字符串） | `"0o644"` |
+| `backup_dir_mode` | 备份目录在 mirror 中的权限（八进制字符串） | `"0o755"` |
 
 ### Modules 选项
 

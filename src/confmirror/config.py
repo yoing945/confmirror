@@ -25,6 +25,8 @@ class ConfigKeys:
     GIT_AUTO_COMMIT = "git_auto_commit"
     GIT_AUTO_PUSH = "git_auto_push"
     LOG_MAX_LINES = "log_max_lines"
+    BACKUP_FILE_MODE = "backup_file_mode"
+    BACKUP_DIR_MODE = "backup_dir_mode"
 
     # 模块键
     MOD_NAME = "name"
@@ -162,6 +164,8 @@ def load_config(custom_config_path: Optional[str] = None) -> dict:
     settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
     settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
     settings.setdefault(ConfigKeys.LOG_MAX_LINES, 1000)  # 默认1000行
+    settings.setdefault(ConfigKeys.BACKUP_FILE_MODE, "0o644")
+    settings.setdefault(ConfigKeys.BACKUP_DIR_MODE, "0o755")
 
     # 路径标准化（相对于配置文件所在目录）
     base = config_path.parent
