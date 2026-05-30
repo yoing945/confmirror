@@ -3,13 +3,14 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import click
 from click import Context, Parameter
 
 from . import __version__
 from .backup import execute_backup
-from .config import APP_NAME, ConfigKeys, load_config
+from .config import APP_NAME, Config, load_config, resolve_config_path
 from .diff import diff_module, diff_paths
 from .gitops import git_auto_commit_and_push
 from .global_config import (
@@ -19,9 +20,11 @@ from .global_config import (
     set_global_config_value,
 )
 from .list import execute_list
-from .logger import setup_logger
+from .logger import setup_logger, resolve_log_path, ModuleLog
 from .perms import execute_perms
 from .restore import execute_restore
+
+logger = logging.getLogger(__name__)
 
 
 def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
@@ -34,14 +37,51 @@ def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
         else:
             config_path = None
         config = load_config(config_path)
-        if config and ConfigKeys.SECTION_MODULES in config:
-            modules = config[ConfigKeys.SECTION_MODULES]
+        if config is not None:
+            modules = config.modules
             # 返回匹配不完整输入的模块名称
-            return [mod[ConfigKeys.NAME] for mod in modules if mod[ConfigKeys.NAME].startswith(incomplete)]
+            return [mod.name for mod in modules if mod.name.startswith(incomplete)]
         return []
-    except:
+    except Exception:
         # 如果配置加载失败，返回空列表
         return []
+
+
+def _preconfigure_logger(config_path: Optional[str]) -> None:
+    """在 load_config 之前预读配置中的日志设置，提前配置 logger
+
+    确保 load_config 阶段的错误日志也能写入文件，而不是走 stderr 兜底。
+    """
+    log_dir = "./logs"
+    log_max_lines = 1000
+    config_name = "confmirror"
+
+    path = resolve_config_path(config_path)
+    if path.exists():
+        try:
+            import yaml
+            with open(path, encoding='utf-8') as f:
+                raw = yaml.safe_load(f)
+            if isinstance(raw, dict) and isinstance(raw.get('settings'), dict):
+                settings = raw['settings']
+                log_dir = settings.get('log_dir', log_dir)
+                log_max_lines = settings.get('log_max_lines', log_max_lines)
+                config_name = settings.get('name', path.parent.name)
+        except Exception:
+            pass  # YAML 损坏或读取失败时回退到默认值
+
+    log_file = resolve_log_path(log_dir, config_name)
+    setup_logger(log_file, log_max_lines)
+
+
+def _get_logger_from_config(config: Config) -> logging.Logger:
+    """根据配置获取日志记录器（此时 logger 已预配置，只需确保参数一致）"""
+    log_file = resolve_log_path(
+        config.settings.log_dir,
+        config.settings.name
+    )
+    max_lines = config.settings.log_max_lines
+    return setup_logger(log_file, max_lines)
 
 
 class ConfMirrorContext:
@@ -130,7 +170,10 @@ class CustomGroup(click.Group):
 @click.pass_context
 def main(ctx):
     ctx.ensure_object(ConfMirrorContext)
-    pass
+
+    # 预配置 logger，确保 load_config 及后续所有日志统一输出到文件
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    _preconfigure_logger(conf_ctx.config_path if conf_ctx else None)
 
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要备份的模块名称')
@@ -146,32 +189,33 @@ def backup(ctx, module, force, target_paths):
         config = load_config(config_path)
 
         # 检查配置是否加载成功
-        if not config:
+        if config is None:
             click.echo("❌ 配置加载失败，无法执行备份任务", err=True)
             sys.exit(1)
 
-        settings:dict = config[ConfigKeys.SECTION_SETTINGS]
-        name = settings[ConfigKeys.NAME]
+        settings = config.settings
+        name = settings.name
 
-        logger = setup_logger(config)
-        backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
-        logger.info(f"开始执行备份，镜像目录: {backup_root}")
+        logger = _get_logger_from_config(config)
+        log = ModuleLog("cli", logger)
+        backup_root = settings.backup_root
+        log.info(f"开始执行备份，镜像目录: {backup_root}")
 
         if force:
-            logger.info("⚠️  已启用强制覆盖备份模式")
+            log.warn("已启用强制覆盖备份模式")
 
         # 根据参数决定备份方式
         if module:
-            execute_backup(config, logger, target_module_name=module, force=force)
+            execute_backup(config, target_module_name=module, force=force)
         elif target_paths:
             # 如果target_paths长度>1，日志只输出前1个，后续用...代替
             log_str = target_paths[0]
             if len(target_paths) > 1:
                 log_str += f", ..."
-            logger.info(f"开始执行路径备份: {log_str}")
+            log.info(f"开始执行路径备份: {log_str}")
             # 指定路径备份 - 支持多个路径
             for target_path in target_paths:
-                execute_backup(config, logger, target_path=target_path, force=force)
+                execute_backup(config, target_path=target_path, force=force)
         else:
             confirm = click.prompt("正在进行全量备份, y/n?", type=str)
             confirm = confirm.strip().lower()
@@ -179,24 +223,23 @@ def backup(ctx, module, force, target_paths):
                 click.echo("全量备份已取消")
                 return
             # 全量备份
-            logger.info("开始执行全量备份")
-            execute_backup(config, logger, force=force)
+            log.info("开始执行全量备份")
+            execute_backup(config, force=force)
 
-        if settings.get(ConfigKeys.GIT_AUTO_COMMIT):
+        if settings.git_auto_commit:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = f"[{timestamp}] 自动同步: {name}"
-            success =git_auto_commit_and_push(
+            success = git_auto_commit_and_push(
                 repo_path=Path(config_path).parent if config_path else Path.cwd(),  # 使用配置文件所在目录或当前工作目录
                 message=msg,
-                auto_push=settings.get(ConfigKeys.GIT_AUTO_PUSH, False)
+                auto_push=settings.git_auto_push
             )
             if success:
-                logger.info("Git 提交完成")
+                log.ok("Git 提交完成")
 
-        logger.info("✅ 备份完成")
+        log.ok("备份完成")
     except Exception as e:
-        logger = logging.getLogger(APP_NAME)
-        logger.error(traceback.format_exc())
+        logging.getLogger(APP_NAME).error(traceback.format_exc())
         sys.exit(1)
 
 @main.command()
@@ -212,35 +255,36 @@ def restore(ctx, module, force, target_paths):
         config = load_config(config_path)
 
         # 检查配置是否加载成功
-        if not config:
+        if config is None:
             click.echo("❌ 配置加载失败，无法执行还原任务", err=True)
             sys.exit(1)
 
-        logger = setup_logger(config)
+        logger = _get_logger_from_config(config)
+        log = ModuleLog("cli", logger)
 
         if force:
-            logger.info("⚠️  已启用强制覆盖还原模式")
+            log.warn("已启用强制覆盖还原模式")
 
         # 根据参数决定还原方式
         if module:
-            execute_restore(config, logger, target_module_name=module, force=force)
+            execute_restore(config, target_module_name=module, force=force)
         elif target_paths:
             log_str = target_paths[0]
             if len(target_paths) > 1:
                 log_str += f", ..."
-            logger.info(f"开始执行路径还原: {log_str}")
+            log.info(f"开始执行路径还原: {log_str}")
             for target_path in target_paths:
-                execute_restore(config, logger, target_path=target_path, force=force)
+                execute_restore(config, target_path=target_path, force=force)
         else:
             # 全量还原需要二次确认
             confirm = click.prompt("⚠️  正在进行全量还原操作，这会覆盖所有备份关联的系统配置文件。\n输入 'YES' 确认继续", type=str)
             if confirm != 'YES':
                 click.echo("全量还原已取消")
                 return
-            logger.info("开始执行全量还原")
-            execute_restore(config, logger, force=force)
+            log.info("开始执行全量还原")
+            execute_restore(config, force=force)
 
-        logger.info("✅ 还原完成")
+        log.ok("还原完成")
     except Exception as e:
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
@@ -258,20 +302,20 @@ def perms(ctx, module, target_paths):
         config = load_config(config_path)
 
         # 检查配置是否加载成功
-        if not config:
+        if config is None:
             click.echo("❌ 配置加载失败，无法查看权限信息", err=True)
             sys.exit(1)
 
-        logger = setup_logger(config)
+        logger = _get_logger_from_config(config)
 
         # 根据参数决定权限查看方式
         if module:
             # 分模块查看权限
-            execute_perms(config, logger, target_module_name=module)
+            execute_perms(config, target_module_name=module)
         elif target_paths:
             # 指定路径查看权限 - 支持多个路径
             for target_path in target_paths:
-                execute_perms(config, logger, target_path=target_path)
+                execute_perms(config, target_path=target_path)
         else:
             # 没有参数，列出所有模块
             click.echo("⚠️  需要指定模块或路径。")
@@ -294,11 +338,11 @@ def ls(ctx, module, detail):
         config = load_config(config_path)
 
         # 检查配置是否加载成功
-        if not config:
+        if config is None:
             click.echo("❌ 配置加载失败，无法列出模块", err=True)
             sys.exit(1)
 
-        logger = setup_logger(config)
+        logger = _get_logger_from_config(config)
 
         # 列出所有模块或指定模块
         execute_list(config, module_name=module, detail=detail)
@@ -322,11 +366,11 @@ def diff(ctx, module, detail, target_paths):
         config_path = ctx.find_object(ConfMirrorContext).config_path
         config = load_config(config_path)
 
-        if not config:
+        if config is None:
             click.echo("❌ 配置加载失败", err=True)
             sys.exit(1)
 
-        logger = setup_logger(config)
+        logger = _get_logger_from_config(config)
 
         # 根据参数决定差异对比方式
         if module:
@@ -353,16 +397,17 @@ def sync(ctx, message):
         config_path = ctx.find_object(ConfMirrorContext).config_path
         config = load_config(config_path)
 
-        if not config:
+        if config is None:
             click.echo("❌ 配置加载失败，无法执行同步任务", err=True)
             sys.exit(1)
 
-        settings: dict = config[ConfigKeys.SECTION_SETTINGS]
-        name = settings[ConfigKeys.NAME]
-        backup_root = settings[ConfigKeys.BACKUP_ROOT]
+        settings = config.settings
+        name = settings.name
+        backup_root = settings.backup_root
 
-        logger = setup_logger(config)
-        logger.info("开始执行手动同步到远端仓库")
+        logger = _get_logger_from_config(config)
+        log = ModuleLog("cli", logger)
+        log.info("开始执行手动同步到远端仓库")
 
         # 执行 Git 提交和推送
         if message:
@@ -372,15 +417,16 @@ def sync(ctx, message):
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = f"[{timestamp}] 手动同步: {name}"
         success = git_auto_commit_and_push(
-            repo_path=Path(backup_root),  # 使用配置文件所在目录
+            repo_path=backup_root,  # 使用配置文件所在目录
             message=msg,
-            auto_push=True  # 手动同步总是推送
+            auto_push=True,  # 手动同步总是推送
+            logger=logger
         )
 
         if success:
-            logger.info("✅ 手动同步完成")
+            log.ok("手动同步完成")
         else:
-            logger.error("❌ 手动同步失败")
+            log.error("手动同步失败")
             sys.exit(1)
 
     except Exception as e:

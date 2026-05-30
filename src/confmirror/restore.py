@@ -1,74 +1,75 @@
+import logging
 import glob
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from .config import ConfigKeys
+from .config import Config, ModuleConfig, Settings
 from .meta import read_meta
 from .utils import find_matching_module_with_path, run_shell_script, should_exclude_path
+from .logger import ModuleLog
+
+logger = logging.getLogger(__name__)
+_log = ModuleLog("restore", logger)
 
 
-def execute_restore(config: dict, logger, target_module_name: Optional[str] = None, target_path: Optional[str] = None, force: bool = False) -> None:
+def execute_restore(config: Config, target_module_name: Optional[str] = None, target_path: Optional[str] = None, force: bool = False) -> None:
     """
     执行还原操作
 
     Args:
-        config: 配置字典
-        logger: 日志记录器
+        config: 配置对象
         target_module_name: 指定要还原的模块名称
         target_path: 指定要还原的路径
         force: 是否强制覆盖还原（默认为False，即差异还原）
     """
     if os.name != 'nt' and os.getuid() != 0:
-        logger.warning("⚠️ 当前未以 root 身份运行，restore 操作可能因权限不足而失败。建议：sudo confmirror restore ...")
+        _log.warn("当前未以 root 身份运行，restore 操作可能因权限不足而失败。建议：sudo confmirror restore ...")
 
     if target_module_name:
         # 还原指定模块
-        modules = config.get(ConfigKeys.SECTION_MODULES, [])
-        target_module = next((m for m in modules if m[ConfigKeys.MOD_NAME] == target_module_name), None)
+        target_module = next((m for m in config.modules if m.name == target_module_name), None)
         if not target_module:
-            logger.error(f"❌ 配置中不存在模块 '{target_module_name}'")
+            _log.error(f"配置中不存在模块 '{target_module_name}'")
             return
-        restore_module(target_module, config, logger, force)
+        restore_module(target_module, config, force)
     elif target_path:
         # 还原指定路径
-        restore_single_path(target_path, config, logger, force)
+        restore_single_path(target_path, config, force)
     else:
         # 全量还原
-        modules = config.get(ConfigKeys.SECTION_MODULES, [])
-        for module in modules:
-            restore_module(module, config, logger, force)
+        for module in config.modules:
+            restore_module(module, config, force)
 
 
-def restore_module(module: dict, config: dict, logger, force: bool = False) -> None:
+def restore_module(module: ModuleConfig, config: Config, force: bool = False) -> None:
     """
     还原单个模块
 
     Args:
-        module: 模块配置
-        config: 配置字典
-        logger: 日志记录器
+        module: 模块配置对象
+        config: 配置对象
         force: 是否强制覆盖还原
     """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+    settings = config.settings
+    backup_root = settings.backup_root
 
-    module_name = module[ConfigKeys.MOD_NAME]
-    logger.info(f"开始还原模块: {module_name}")
+    module_name = module.name
+    _log.info(f"开始还原模块: {module_name}")
 
-    if ConfigKeys.MOD_SCRIPT in module:
-        script_rel = module[ConfigKeys.MOD_SCRIPT]
-        run_shell_script(script_rel, settings, logger, "restore")
+    if module.script is not None:
+        script_rel = module.script
+        run_shell_script(script_rel, settings, "restore")
 
-    elif ConfigKeys.MOD_INCLUDE_PATHS in module:
-        parent_path_str = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+    elif module.include_paths is not None:
+        parent_path_str = module.parent_path or ""
         backup_parent_path = backup_root / parent_path_str.lstrip('/')
 
         # 获取排除路径模式
-        all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+        all_exclude_patterns = module.exclude_paths or []
 
-        for path_str in module[ConfigKeys.MOD_INCLUDE_PATHS]:
+        for path_str in module.include_paths:
             full_path_pattern = str(backup_parent_path / path_str.lstrip('/'))
             matched_paths = glob.glob(full_path_pattern, recursive=True)
 
@@ -81,43 +82,41 @@ def restore_module(module: dict, config: dict, logger, force: bool = False) -> N
 
                 # 检查是否应该排除此路径
                 if should_exclude_path(path, all_exclude_patterns, str(backup_parent_path)):
-                    logger.info(f"[跳过] 路径 '{path}' 被排除")
+                    _log.skip(f"路径 '{path}' 被排除")
                     continue
 
                 # 获取相对于备份根目录的路径，这是原始路径
                 try:
                     rel_path = path.relative_to(backup_root)
                     original_path = Path('/') / rel_path
-                    restore_file_or_dir(original_path, backup_root, logger, force)
+                    restore_file_or_dir(original_path, backup_root, force)
                 except ValueError:
-                    logger.warning(f"路径不在备份根目录下 → {path}")
+                    _log.warn(f"路径不在备份根目录下 → {path}")
 
 
-def restore_single_path(target_path: str, config: dict, logger, force: bool = False) -> None:
+def restore_single_path(target_path: str, config: Config, force: bool = False) -> None:
     """
     还原单个路径
 
     Args:
         target_path: 目标路径
-        config: 配置字典
-        logger: 日志记录器
+        config: 配置对象
         force: 是否强制覆盖还原
     """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+    settings = config.settings
+    backup_root = settings.backup_root
 
     # 检查路径是否属于某个模块
-    modules = config.get(ConfigKeys.SECTION_MODULES, [])
-    module = find_matching_module_with_path(modules, Path(target_path))
+    module = find_matching_module_with_path(config.modules, Path(target_path))
     if not module:
-        logger.error(f"路径 '{target_path}' 不属于任何模块，无法还原")
+        _log.error(f"路径 '{target_path}' 不属于任何模块，无法还原")
         return
 
     # 获取排除路径模式和父路径
-    all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
-    parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+    all_exclude_patterns = module.exclude_paths or []
+    parent_path = module.parent_path or ""
     if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
-        logger.info(f"[跳过] 路径 '{target_path}' 被排除")
+        _log.skip(f"路径 '{target_path}' 被排除")
         return
 
     # 将用户输入的路径转换为备份根目录下的路径
@@ -134,11 +133,11 @@ def restore_single_path(target_path: str, config: dict, logger, force: bool = Fa
         try:
             rel_path = Path(file_path).relative_to(backup_root)
             original_path = Path('/') / rel_path
-            restore_file_or_dir(original_path, backup_root, logger, force)
+            restore_file_or_dir(original_path, backup_root, force)
         except ValueError:
-            logger.warning(f"路径不在备份根目录下 → {file_path}")
+            _log.warn(f"路径不在备份根目录下 → {file_path}")
 
-def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool = False):
+def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False):
     """
     还原单个文件或目录
 
@@ -153,11 +152,11 @@ def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool =
     meta = read_meta(backup)
 
     if not meta:
-        logger.warning(f"缺少 .meta → {original}")
+        _log.warn(f"缺少 .meta → {original}")
         return
 
     if not backup.exists():
-        logger.warning(f"备份内容不存在 → {original}")
+        _log.warn(f"备份内容不存在 → {original}")
         return
 
     # 检查是否需要跳过（差异还原模式）
@@ -165,7 +164,7 @@ def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool =
         # 导入差异比较函数
         from .diff import same_file
         if same_file(original, backup):
-            logger.info(f"[跳过] 文件信息无变化: {original}")
+            _log.skip(f"文件信息无变化: {original}")
             return
 
     # 创建父目录
@@ -181,7 +180,7 @@ def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool =
             shutil.copy2(backup, original)
             os.chmod(original, int(mode, 8))
             os.chown(original, uid, gid)
-            logger.info(f"[文件还原成功] {original}")
+            _log.ok(f"{original}")
         elif ftype == "dir":
             original.mkdir(exist_ok=True)
             # 类似rsync的复制 (shutil.copytree 不覆盖，用 walk)
@@ -195,9 +194,9 @@ def restore_file_or_dir(original: Path, backup_root: Path, logger, force: bool =
                         shutil.copy2(src_file, dst_file)
             os.chmod(original, int(mode, 8))
             os.chown(original, uid, gid)
-            logger.info(f"[目录还原成功] {original}")
+            _log.ok(f"{original}")
     except PermissionError as e:
-        logger.error(f"[权限错误] 无法还原 {e}")
-        logger.error(f"提示: 此文件可能需要 root 权限才能还原，请尝试使用 sudo 运行此命令")
+        _log.error(f"无法还原 {e}")
+        _log.error("提示: 此文件可能需要 root 权限才能还原，请尝试使用 sudo 运行此命令")
     except Exception as e:
-        logger.error(f"[还原失败] {original}: {str(e)}")
+        _log.error(f"{original}: {str(e)}")

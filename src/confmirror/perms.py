@@ -1,11 +1,10 @@
 """
 权限查看功能模块
 """
+import logging
 import glob
 from pathlib import Path
 from typing import Dict, List, Optional
-
-import click
 
 from confmirror.utils import (
     find_matching_module_with_path,
@@ -13,72 +12,74 @@ from confmirror.utils import (
     should_exclude_path,
 )
 
-from .config import ConfigKeys
+from .config import Config, ModuleConfig, Settings
 from .meta import read_meta
+from .logger import ModuleLog
+
+logger = logging.getLogger(__name__)
+_log = ModuleLog("perms", logger)
 
 
-def execute_perms(config: Dict, logger, target_module_name: Optional[str] = None, target_path: Optional[str] = None) -> None:
+def execute_perms(config: Config, target_module_name: Optional[str] = None, target_path: Optional[str] = None) -> None:
     """
     执行权限查看操作
 
     Args:
-        config: 配置字典
-        logger: 日志记录器
+        config: 配置对象
         target_module_name: 指定要查看权限的模块名称
-        target_paths: 指定要查看权限的路径列表
+        target_path: 指定要查看权限的路径
     """
     if target_module_name:
         # 查看指定模块的权限信息
         perms_info = get_perms_for_module(target_module_name, config)
         display_perms_info(perms_info, config)
     elif target_path:
-        module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
+        module = find_matching_module_with_path(config.modules, Path(target_path))
         if not module:
-            logger.error(f"❌ 路径 '{target_path}' 不属于任何模块")
+            _log.error(f"路径 '{target_path}' 不属于任何模块")
             return
         # 获取排除路径模式和父路径
-        all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
-        parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+        all_exclude_patterns = module.exclude_paths or []
+        parent_path = module.parent_path or ""
         if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
             return
         perms_info = get_perms_for_path(config, target_path)
         display_perms_info(perms_info, config)
 
 
-def get_perms_for_module(module_name: str, config: Dict) -> List[Dict]:
+def get_perms_for_module(module_name: str, config: Config) -> List[Dict]:
     """
     获取指定模块的所有权限信息
 
     Args:
         module_name: 模块名称
-        config: 配置字典
+        config: 配置对象
 
     Returns:
         包含文件路径和权限信息的列表
     """
 
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+    settings = config.settings
+    backup_root = settings.backup_root
 
     # 找到指定模块
-    modules = config.get(ConfigKeys.SECTION_MODULES, [])
-    target_module = next((m for m in modules if m[ConfigKeys.MOD_NAME] == module_name), None)
+    target_module = next((m for m in config.modules if m.name == module_name), None)
     if not target_module:
-        click.echo(f"❌ 配置中不存在模块 '{module_name}'")
+        _log.error(f"配置中不存在模块 '{module_name}'")
         return []
 
     perms_info = []
 
-    if ConfigKeys.MOD_SCRIPT in target_module:
+    if target_module.script is not None:
         # 模块使用脚本备份，暂时不处理
-        click.echo(f"❌ 脚本钩子模块 '{module_name}'不支持查看权限 ")
+        _log.error(f"脚本钩子模块 '{module_name}'不支持查看权限 ")
         return []
 
-    elif ConfigKeys.MOD_INCLUDE_PATHS in target_module:
-        parent_path_str = target_module.get(ConfigKeys.MOD_PARENT_PATH, "")
+    elif target_module.include_paths is not None:
+        parent_path_str = target_module.parent_path or ""
         backup_parent_path = str(backup_root / parent_path_str.lstrip('/'))
 
-        for path_str in target_module[ConfigKeys.MOD_INCLUDE_PATHS]:
+        for path_str in target_module.include_paths:
             full_path_pattern = str(Path(backup_parent_path) / path_str)
             matched_paths = glob.glob(full_path_pattern, recursive=True)
             temp_info = matched_paths_to_perms_info(matched_paths)
@@ -87,20 +88,19 @@ def get_perms_for_module(module_name: str, config: Dict) -> List[Dict]:
     return perms_info
 
 
-def get_perms_for_path(config: Dict, target_path: str) -> List[Dict]:
+def get_perms_for_path(config: Config, target_path: str) -> List[Dict]:
     """
     获取指定路径的权限信息
 
     Args:
-        config: 配置字典
+        config: 配置对象
         target_path: 目标路径
-        recursive: 是否递归查找
 
     Returns:
         包含文件路径和权限信息的列表
     """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+    settings = config.settings
+    backup_root = settings.backup_root
 
     # 将用户输入的路径转换为备份根目录下的路径模式
     backup_target_path_str = str(backup_root / target_path.lstrip('/'))
@@ -134,32 +134,32 @@ def matched_paths_to_perms_info(matched_paths: List[str]) -> List[Dict]:
     return perms_info
 
 
-def display_perms_info(perms_list: List[Dict], config: Dict):
+def display_perms_info(perms_list: List[Dict], config: Config):
     """
     显示权限信息
 
     Args:
         perms_list: 权限信息列表
-        config: 配置字典
+        config: 配置对象
     """
     if not perms_list:
-        click.echo("未找到任何权限信息, 请检查路径或是否备份")
+        _log.warn("未找到任何权限信息, 请检查路径或是否备份")
         return
 
     for info in perms_list:
         
         path = info['path']
         source_path = get_src_path_from_backup_full_path(config, path)
-        click.echo(f"路径: {source_path}")
+        _log.info(f"路径: {source_path}")
         # 检查源文件是否存在并显示其权限
         if source_path.exists():
             source_stat = source_path.stat()
             source_mode = oct(source_stat.st_mode)[-3:]
             source_uid = source_stat.st_uid
             source_gid = source_stat.st_gid
-            click.echo(f"  (src) 类型: {'dir' if source_path.is_dir() else 'file'}, 权限: {source_mode}, 所有者: {source_uid}:{source_gid}")
+            _log.info(f"  (src) 类型: {'dir' if source_path.is_dir() else 'file'}, 权限: {source_mode}, 所有者: {source_uid}:{source_gid}")
         else:
-            click.echo(f"⚠️  源文件: {source_path} (不存在)")
+            _log.warn(f"源文件: {source_path} (不存在)")
 
         meta = info['meta']
         type_str = meta.get('type', 'unknown')
@@ -167,5 +167,4 @@ def display_perms_info(perms_list: List[Dict], config: Dict):
         uid = meta.get('uid', 'unknown')
         gid = meta.get('gid', 'unknown')
 
-        click.echo(f"  (bak) 类型: {type_str}, 权限: {mode}, 所有者: {uid}:{gid}")
-
+        _log.info(f"  (bak) 类型: {type_str}, 权限: {mode}, 所有者: {uid}:{gid}")

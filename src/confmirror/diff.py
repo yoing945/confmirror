@@ -1,21 +1,24 @@
 """
 差异对比功能模块 - 支持单文件级别的源文件与备份文件比较
 """
+import logging
 import difflib
 import filecmp
-import fnmatch
 import glob
 import hashlib
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict, Any
 
 import click
 
-from .config import ConfigKeys
+from .config import Config, ModuleConfig, Settings
 from .meta import read_meta
 from .utils import find_matching_module_with_path, should_exclude_path
+from .logger import ModuleLog
+
+logger = logging.getLogger(__name__)
+_log = ModuleLog("diff", logger)
 
 
 def same_file(src:Path, dest:Path) -> bool:
@@ -267,34 +270,35 @@ def compare_files_set(source_files_set: set, backup_files_set: set, backup_root:
                 diff_files += 1
             print_line()
 
-    click.echo(f"对比完成: 共{total_common_files}个共同文件, {diff_files}个存在差异, "
-                f"{len(added_files)}个新增, {len(deleted_files)}个缺失")
+    summary = f"共{total_common_files}个共同文件, {diff_files}个存在差异, {len(added_files)}个新增, {len(deleted_files)}个缺失"
+    click.echo(f"对比完成: {summary}")
+    _log.info(f"对比完成: {summary}")
 
 
-def diff_paths(config: dict, target_paths: List[str], detail: bool = False) -> None:
+def diff_paths(config: Config, target_paths: List[str], detail: bool = False) -> None:
     """
     对比指定路径下的所有文件与备份目录中的差异
 
     Args:
-        config: 配置字典
+        config: 配置对象
         target_paths: 目标路径列表（原始系统路径）
         detail: 是否显示详细内容差异
     """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+    settings = config.settings
+    backup_root = settings.backup_root
 
     # 收集所有源文件路径
     source_files_set = set()
     # 收集该模块在备份目录中的所有文件
     backup_files_set = set()
     for target_path in target_paths:
-        module = find_matching_module_with_path(config.get(ConfigKeys.SECTION_MODULES, []), Path(target_path))
+        module = find_matching_module_with_path(config.modules, Path(target_path))
         if not module:
             click.echo(f"❌ 路径 '{target_path}' 不属于任何模块")
             return
         # 获取排除路径模式和父路径
-        all_exclude_patterns = module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
-        parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
+        all_exclude_patterns = module.exclude_paths or []
+        parent_path = module.parent_path or ""
         if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
             continue
 
@@ -321,38 +325,39 @@ def diff_paths(config: dict, target_paths: List[str], detail: bool = False) -> N
             backup_files_set.add(Path('/') / backup_path.relative_to(backup_root))
 
     compare_files_set(source_files_set, backup_files_set, backup_root, detail)
+    _log.info(f"路径对比完成: {target_paths}")
 
 
-def diff_module(config: dict, module_name: str, detail: bool = False) -> None:
+def diff_module(config: Config, module_name: str, detail: bool = False) -> None:
     """
     对比整个模块的所有文件
 
     Args:
-        config: 配置字典
+        config: 配置对象
         module_name: 模块名称
         detail: 是否显示详细内容差异
     """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = Path(settings[ConfigKeys.BACKUP_ROOT])
+    settings = config.settings
+    backup_root = settings.backup_root
 
-    modules = config.get(ConfigKeys.SECTION_MODULES, [])
-    target_module = next((m for m in modules if m[ConfigKeys.MOD_NAME] == module_name), None)
+    target_module = next((m for m in config.modules if m.name == module_name), None)
 
     if not target_module:
         click.echo(f"❌ 未找到模块: {module_name}")
         return
 
+    _log.info(f"开始对比模块: {module_name}")
     click.echo(f"开始对比模块: {module_name}")
 
-    if ConfigKeys.MOD_SCRIPT in target_module:
+    if target_module.script is not None:
         click.echo("脚本模块不支持差异对比")
         return
 
-    parent_path = target_module.get(ConfigKeys.MOD_PARENT_PATH, "")
-    include_paths = target_module.get(ConfigKeys.MOD_INCLUDE_PATHS, [])
+    parent_path = target_module.parent_path or ""
+    include_paths = target_module.include_paths or []
 
     # 获取排除路径模式
-    exclude_patterns = target_module.get(ConfigKeys.MOD_EXCLUDE_PATHS, [])
+    exclude_patterns = target_module.exclude_paths or []
 
     # 收集所有源文件路径
     source_files_set = set()

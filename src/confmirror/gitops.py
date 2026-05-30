@@ -1,10 +1,14 @@
 # src/confmirror/gitops.py
 
+import logging
 import subprocess
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
-import click
+from .logger import ModuleLog
+
+logger = logging.getLogger(__name__)
+_log = ModuleLog("git", logger)
 
 
 def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = False,
@@ -29,9 +33,9 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
             cwd=repo_path, capture_output=True, text=True
         )
         if result.returncode != 0:
-            click.echo("⚠️  当前目录不是Git仓库，跳过Git操作")
+            _log.warn("当前目录不是Git仓库，跳过Git操作")
             return False
-        click.echo(f"仓库路径: {repo_path}")
+        _log.info(f"仓库路径: {repo_path}")
         # 添加所有变更
         subprocess.run(["git", "add", "."], cwd=repo_path, check=True, capture_output=True)
 
@@ -41,7 +45,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
             cwd=repo_path, capture_output=True, text=True
         )
         if not result.stdout.strip():
-            click.echo("ℹ️  没有变更需要提交")
+            _log.info("没有变更需要提交")
             return True
 
         # 提交变更
@@ -49,7 +53,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
             ["git", "commit", "-m", message],
             cwd=repo_path, check=True, capture_output=True
         )
-        click.echo(f"✅ 已提交: {message}")
+        _log.ok(f"已提交: {message}")
 
         # 推送到远程（如果启用）
         if auto_push:
@@ -68,7 +72,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
             )
 
             if remote_result.returncode != 0:
-                click.echo(f"⚠️  远程仓库 '{remote_name}' 未配置，跳过推送")
+                _log.warn(f"远程仓库 '{remote_name}' 未配置，跳过推送")
                 return True
 
             # 执行推送
@@ -78,17 +82,12 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
             )
 
             if push_result.returncode == 0:
-                click.echo(f"✅ 已推送到 {remote_name}/{branch}")
+                _log.ok(f"已推送到 {remote_name}/{branch}")
             else:
-                click.echo(f"⚠️  推送失败: {push_result.stderr}")
+                _log.warn(f"推送失败: {push_result.stderr}")
                 return False
 
         return True
 
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Git 操作失败: {e.stderr if hasattr(e, 'stderr') else str(e)}")
-
-
-
-
-

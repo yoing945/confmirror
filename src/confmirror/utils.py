@@ -1,12 +1,17 @@
+import logging
 import fnmatch
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import pathspec
 
-from confmirror.config import ConfigKeys
+from confmirror.config import Config, ModuleConfig, Settings
+from confmirror.logger import ModuleLog
+
+logger = logging.getLogger(__name__)
+_log = ModuleLog("script", logger)
 
 
 def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "") -> bool:
@@ -44,16 +49,15 @@ def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "
     return spec.match_file(path_str)
 
 
-def get_src_path_from_backup_full_path(config:Dict, full_path_str:str)->Path:
+def get_src_path_from_backup_full_path(config: Config, full_path_str: str) -> Path:
     """
     通过备份文件的完整路径获取对应的源文件路径字符串
 
     Args:
-        config: 配置文件
+        config: 配置对象
         full_path_str: 备份文件的完整路径
     """
-    settings = config[ConfigKeys.SECTION_SETTINGS]
-    backup_root = settings[ConfigKeys.BACKUP_ROOT]
+    backup_root = config.settings.backup_root
     # 将绝对路径转换为相对备份路径
     # 将path转换为相对于备份根目录的路径
     try:
@@ -64,7 +68,7 @@ def get_src_path_from_backup_full_path(config:Dict, full_path_str:str)->Path:
     return src_path
 
 
-def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
+def find_matching_module_with_path(modules: List[ModuleConfig], path: Path) -> Optional[ModuleConfig]:
     """
     查找包含指定路径的模块
 
@@ -73,12 +77,12 @@ def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
         path: 要查找的路径
 
     Returns:
-        包含该路径的模块配置字典，如果未找到则返回None
+        包含该路径的模块配置对象，如果未找到则返回None
     """
     for module in modules:
-        if ConfigKeys.MOD_INCLUDE_PATHS in module:
-            parent_path = module.get(ConfigKeys.MOD_PARENT_PATH, "")
-            for path_str in module[ConfigKeys.MOD_INCLUDE_PATHS]:
+        if module.include_paths is not None:
+            parent_path = module.parent_path or ""
+            for path_str in module.include_paths:
                 if parent_path:
                     module_path = Path(parent_path) / path_str
                 else:
@@ -88,40 +92,38 @@ def find_matching_module_with_path(modules: list, path: Path) -> Optional[dict]:
     return None
 
 
-def run_shell_script(script_rel: str, settings: dict, logger, action: str) -> bool:
+def run_shell_script(script_rel: str, settings: Settings, action: str) -> bool:
     """
     执行shell脚本（向后兼容）
 
     Args:
         script_rel: 脚本相对路径
-        settings: 配置设置字典
-        logger: 日志记录器
+        settings: 配置设置对象
         action: 操作类型（backup/restore）
 
     Returns:
         bool: 脚本执行成功返回True，否则返回False
     """
-    return run_script(script_rel, settings, logger, action, script_lang="bash")
+    return run_script(script_rel, settings, action, script_lang="bash")
 
 
-def run_script(script_rel: str, settings: dict, logger, action: str, script_lang: str = "bash") -> bool:
+def run_script(script_rel: str, settings: Settings, action: str, script_lang: str = "bash") -> bool:
     """
     执行脚本，支持多种脚本语言
 
     Args:
         script_rel: 脚本相对路径
-        settings: 配置设置字典
-        logger: 日志记录器
+        settings: 配置设置对象
         action: 操作类型（backup/restore）
         script_lang: 脚本语言（bash/python/python3/ruby/node等）
 
     Returns:
         bool: 脚本执行成功返回True，否则返回False
     """
-    script_hooks_dir = Path(settings[ConfigKeys.SCRIPT_HOOKS_DIR])
+    script_hooks_dir = settings.script_hooks_dir
     script = script_hooks_dir / script_rel
     if not script.exists():
-        logger.error(f"脚本不存在 {script}")
+        _log.error(f"脚本不存在 {script}")
         return False
 
     # 根据脚本语言确定解释器和执行方式
@@ -150,7 +152,7 @@ def run_script(script_rel: str, settings: dict, logger, action: str, script_lang
     cmd.append(str(script))
     cmd.append(action)
 
-    logger.info(f"执行脚本 [{script_lang}]: {script}")
+    _log.info(f"执行脚本 [{script_lang}]: {script}")
     try:
         result = subprocess.run(
             cmd,
@@ -161,16 +163,16 @@ def run_script(script_rel: str, settings: dict, logger, action: str, script_lang
             capture_output=False,  
             text=True
         )
-        logger.info(f"脚本执行完成")
+        _log.info("脚本执行完成")
         return True
     except subprocess.CalledProcessError as e:
-        logger.error(f"脚本执行异常，返回码: {e.returncode}")
+        _log.error(f"脚本执行异常，返回码: {e.returncode}")
         return False
     except FileNotFoundError:
-        logger.error(f"找不到解释器 '{script_lang}'，请确保已安装")
+        _log.error(f"找不到解释器 '{script_lang}'，请确保已安装")
         return False
     except Exception as e:
-        logger.error(f"脚本执行异常: {str(e)}")
+        _log.error(f"脚本执行异常: {str(e)}")
         return False
 
 
