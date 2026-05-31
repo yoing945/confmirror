@@ -1,0 +1,37 @@
+name: 发布到 PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: 设置 Python
+        run: uv python install 3.13
+
+      - name: 安装依赖
+        run: uv sync --all-extras --dev --group dev
+
+      - name: 运行测试
+        run: uv run pytest -v
+
+      - name: 类型检查
+        run: uv run basedpyright
+
+      - name: 构建
+        run: uv build
+
+      - name: 发布到 PyPI
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish --token "$PYPI_API_TOKEN"
