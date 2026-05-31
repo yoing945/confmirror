@@ -1,3 +1,4 @@
+import functools
 import logging
 import sys
 import traceback
@@ -19,12 +20,56 @@ from .global_config import (
     remove_global_config_value,
     set_global_config_value,
 )
-from .list import execute_list
+from .list import display_modules, execute_list, get_modules_data
 from .logger import setup_logger, resolve_log_path, ModuleLog
-from .perms import execute_perms
+from .output import ExitCode, emit_json, suppress_console_log
+from .perms import display_perms_info, execute_perms, get_perms_data
 from .restore import execute_restore
 
 logger = logging.getLogger(__name__)
+
+
+def _require_config(ctx: Context, task_name: str = "") -> tuple[Config, logging.Logger]:
+    """从 Click 上下文加载配置并返回 (config, logger)。
+
+    配置加载失败时输出错误信息并直接 sys.exit(1)。
+    """
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    config_path = conf_ctx.config_path if conf_ctx else None
+    config = load_config(config_path)
+    if config is None:
+        if conf_ctx and conf_ctx.output_format == "json":
+            emit_json({"status": "error", "error": "配置加载失败", "task": task_name})
+        else:
+            msg = "❌ 配置加载失败"
+            if task_name:
+                msg += f"，无法执行{task_name}任务"
+            click.echo(msg, err=True)
+        sys.exit(ExitCode.CONFIG_ERROR)
+    return config, _get_logger_from_config(config)
+
+
+def _with_error_handling(command_name: str):
+    """装饰器：统一处理 CLI 命令的异常、JSON 错误输出和退出码。
+
+    消除每个子命令重复的 `try/except → traceback → emit_json → sys.exit` 模板。
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(ctx, *args, **kwargs):
+            conf_ctx = ctx.find_object(ConfMirrorContext)
+            is_json = conf_ctx.output_format == "json" if conf_ctx else False
+            try:
+                return func(ctx, *args, **kwargs)
+            except SystemExit:
+                raise  # 让 sys.exit 直接透传
+            except Exception as e:
+                logging.getLogger(APP_NAME).error(traceback.format_exc())
+                if is_json:
+                    emit_json({"status": "error", "command": command_name, "error": str(e)})
+                sys.exit(ExitCode.PARTIAL_FAILURE)
+        return wrapper
+    return decorator
 
 
 def list_available_modules(ctx: Context, param: Parameter, incomplete: str):
@@ -85,9 +130,12 @@ def _get_logger_from_config(config: Config) -> logging.Logger:
 
 
 class ConfMirrorContext:
-    """用于在命令之间传递配置路径的上下文类"""
-    def __init__(self, config_path=None):
+    """用于在命令之间传递全局上下文的类"""
+    def __init__(self, config_path=None, output_format="human", dry_run=False, non_interactive=False):
         self.config_path = config_path
+        self.output_format = output_format
+        self.dry_run = dry_run
+        self.non_interactive = non_interactive
 
 
 def gen_help_option():
@@ -125,7 +173,7 @@ def gen_config_option():
     def set_config(ctx, param, value):
         if value and not ctx.resilient_parsing:
             ctx.ensure_object(ConfMirrorContext).config_path = value
-    
+
     return click.Option(
         ['-c', '--config'],
         type=click.Path(exists=True),
@@ -135,10 +183,73 @@ def gen_config_option():
     )
 
 
+def _get_group_ctx(ctx):
+    """获取 Group 级别的 context（用于在子命令选项 callback 中写入全局上下文）。"""
+    return ctx.parent if ctx.parent else ctx
+
+
+def gen_format_option():
+    """创建 --format 全局选项"""
+    def set_format(ctx, param, value):
+        if not ctx.resilient_parsing:
+            group_ctx = _get_group_ctx(ctx)
+            group_ctx.ensure_object(ConfMirrorContext).output_format = value
+            if value == "json":
+                from confmirror.output import suppress_console_log
+                suppress_console_log()
+
+    return click.Option(
+        ['--format'],
+        type=click.Choice(['human', 'json']),
+        default='human',
+        expose_value=False,
+        callback=set_format,
+        help="输出格式：human（人类可读）或 json（结构化）"
+    )
+
+
+def gen_dry_run_option():
+    """创建 --dry-run 全局选项"""
+    def set_dry_run(ctx, param, value):
+        if not ctx.resilient_parsing:
+            _get_group_ctx(ctx).ensure_object(ConfMirrorContext).dry_run = value
+
+    return click.Option(
+        ['--dry-run'],
+        is_flag=True,
+        default=False,
+        expose_value=False,
+        callback=set_dry_run,
+        help="预览操作，不实际执行"
+    )
+
+
+def gen_yes_option():
+    """创建 --yes 全局选项（非交互模式）"""
+    def set_yes(ctx, param, value):
+        if not ctx.resilient_parsing:
+            _get_group_ctx(ctx).ensure_object(ConfMirrorContext).non_interactive = value
+
+    return click.Option(
+        ['--yes'],
+        is_flag=True,
+        default=False,
+        expose_value=False,
+        callback=set_yes,
+        help="非交互模式，跳过所有确认提示"
+    )
+
+
 class CustomCommand(click.Command):
-    """自定义命令类，支持-h简写显示帮助"""
+    """自定义命令类，支持-h简写显示帮助和全局选项注入"""
     def get_help_option(self, ctx):
         return gen_help_option()
+
+    def get_params(self, ctx):
+        rv = super().get_params(ctx)
+        # 为所有子命令注入 Agent 友好全局选项
+        rv = [gen_format_option(), gen_dry_run_option(), gen_yes_option()] + list(rv)
+        return rv
 
 class CustomGroup(click.Group):
     """自定义命令组，支持-h简写显示帮助"""
@@ -146,9 +257,8 @@ class CustomGroup(click.Group):
         return gen_help_option()
 
     def get_params(self, ctx):
-        # 添加版本选项到顶级命令
         rv = super().get_params(ctx)
-        # 仅在顶层命令添加版本选项，不在子命令中添加
+        # 仅在顶层命令添加版本和配置选项
         if ctx.parent is None:
             version_opt = gen_version_option()
             config_opt = gen_config_option()
@@ -175,183 +285,189 @@ def main(ctx):
     conf_ctx = ctx.find_object(ConfMirrorContext)
     _preconfigure_logger(conf_ctx.config_path if conf_ctx else None)
 
+    # 注意：suppress_console_log 已在 --format json 选项的 callback 中触发，
+    # 不需要在 main() 中重复处理（Click 的 Group callback 在子命令选项 callback 之前执行）
+
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要备份的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖备份模式')
-@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
+@click.argument('target_paths', nargs=-1, type=str)
 @click.pass_context
+@_with_error_handling("backup")
 def backup(ctx, module, force, target_paths):
     """执行备份操作"""
-    try:
-        # 从上下文获取配置路径
-        config_path = ctx.find_object(ConfMirrorContext).config_path
-        # 加载配置文件
-        config = load_config(config_path)
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    is_json = conf_ctx.output_format == "json" if conf_ctx else False
+    dry_run = conf_ctx.dry_run if conf_ctx else False
+    non_interactive = conf_ctx.non_interactive if conf_ctx else False
 
-        # 检查配置是否加载成功
-        if config is None:
-            click.echo("❌ 配置加载失败，无法执行备份任务", err=True)
-            sys.exit(1)
+    config, logger = _require_config(ctx, task_name="备份")
+    log = ModuleLog("cli", logger)
+    settings = config.settings
+    name = settings.name
+    backup_root = settings.backup_root
+    config_path = conf_ctx.config_path if conf_ctx else None
 
-        settings = config.settings
-        name = settings.name
+    if dry_run:
+        if not is_json:
+            log.info("[DRY-RUN] 预览模式，不实际执行备份")
 
-        logger = _get_logger_from_config(config)
-        log = ModuleLog("cli", logger)
-        backup_root = settings.backup_root
-        log.info(f"开始执行备份，镜像目录: {backup_root}")
+    if force:
+        log.warn("已启用强制覆盖备份模式")
 
-        if force:
-            log.warn("已启用强制覆盖备份模式")
-
-        # 根据参数决定备份方式
-        if module:
-            execute_backup(config, target_module_name=module, force=force)
-        elif target_paths:
-            # 如果target_paths长度>1，日志只输出前1个，后续用...代替
-            log_str = target_paths[0]
-            if len(target_paths) > 1:
-                log_str += f", ..."
-            log.info(f"开始执行路径备份: {log_str}")
-            # 指定路径备份 - 支持多个路径
-            for target_path in target_paths:
-                execute_backup(config, target_path=target_path, force=force)
-        else:
+    # 根据参数决定备份方式
+    if module:
+        execute_backup(config, target_module_name=module, force=force, dry_run=dry_run)
+    elif target_paths:
+        log_str = target_paths[0]
+        if len(target_paths) > 1:
+            log_str += f", ..."
+        log.info(f"开始执行路径备份: {log_str}")
+        for target_path in target_paths:
+            execute_backup(config, target_path=target_path, force=force, dry_run=dry_run)
+    else:
+        if not non_interactive:
             confirm = click.prompt("正在进行全量备份, y/n?", type=str)
             confirm = confirm.strip().lower()
             if confirm != 'y' and confirm != 'yes':
-                click.echo("全量备份已取消")
+                if is_json:
+                    emit_json({"status": "cancelled", "command": "backup", "reason": "用户取消"})
+                else:
+                    click.echo("全量备份已取消")
                 return
-            # 全量备份
-            log.info("开始执行全量备份")
-            execute_backup(config, force=force)
+        log.info("开始执行全量备份")
+        execute_backup(config, force=force, dry_run=dry_run)
 
-        if settings.git_auto_commit:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            msg = f"[{timestamp}] 自动同步: {name}"
-            success = git_auto_commit_and_push(
-                repo_path=Path(config_path).parent if config_path else Path.cwd(),  # 使用配置文件所在目录或当前工作目录
-                message=msg,
-                auto_push=settings.git_auto_push
-            )
-            if success:
-                log.ok("Git 提交完成")
+    if not dry_run and settings.git_auto_commit:
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        msg = f"[{timestamp}] 自动同步: {name}"
+        success, _ = git_auto_commit_and_push(
+            repo_path=Path(config_path).parent if config_path else Path.cwd(),
+            message=msg,
+            auto_push=settings.git_auto_push
+        )
+        if success:
+            log.ok("Git 提交完成")
 
-        log.ok("备份完成")
-    except Exception as e:
-        logging.getLogger(APP_NAME).error(traceback.format_exc())
-        sys.exit(1)
+    if is_json:
+        emit_json({"status": "success", "command": "backup", "module": module,
+                   "dry_run": dry_run, "paths": list(target_paths) if target_paths else []})
+    else:
+        if dry_run:
+            log.ok("[DRY-RUN] 备份预览完成")
+        else:
+            log.ok("备份完成")
 
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='指定要还原的模块名称')
 @click.option('-f', '--force', is_flag=True, help='强制覆盖还原模式（默认为差异还原）')
-@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
+@click.argument('target_paths', nargs=-1, type=str)
 @click.pass_context
+@_with_error_handling("restore")
 def restore(ctx, module, force, target_paths):
     """执行还原操作"""
-    try:
-        # 从上下文获取配置路径
-        config_path = ctx.find_object(ConfMirrorContext).config_path
-        config = load_config(config_path)
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    is_json = conf_ctx.output_format == "json" if conf_ctx else False
+    dry_run = conf_ctx.dry_run if conf_ctx else False
+    non_interactive = conf_ctx.non_interactive if conf_ctx else False
 
-        # 检查配置是否加载成功
-        if config is None:
-            click.echo("❌ 配置加载失败，无法执行还原任务", err=True)
-            sys.exit(1)
+    config, logger = _require_config(ctx, task_name="还原")
+    log = ModuleLog("cli", logger)
 
-        logger = _get_logger_from_config(config)
-        log = ModuleLog("cli", logger)
+    if dry_run and not is_json:
+        log.info("[DRY-RUN] 预览模式，不实际执行还原")
 
-        if force:
-            log.warn("已启用强制覆盖还原模式")
+    if force:
+        log.warn("已启用强制覆盖还原模式")
 
-        # 根据参数决定还原方式
-        if module:
-            execute_restore(config, target_module_name=module, force=force)
-        elif target_paths:
-            log_str = target_paths[0]
-            if len(target_paths) > 1:
-                log_str += f", ..."
-            log.info(f"开始执行路径还原: {log_str}")
-            for target_path in target_paths:
-                execute_restore(config, target_path=target_path, force=force)
-        else:
-            # 全量还原需要二次确认
+    # 根据参数决定还原方式
+    if module:
+        execute_restore(config, target_module_name=module, force=force, dry_run=dry_run)
+    elif target_paths:
+        log_str = target_paths[0]
+        if len(target_paths) > 1:
+            log_str += f", ..."
+        log.info(f"开始执行路径还原: {log_str}")
+        for target_path in target_paths:
+            execute_restore(config, target_path=target_path, force=force, dry_run=dry_run)
+    else:
+        # 全量还原需要二次确认
+        if not non_interactive:
             confirm = click.prompt("⚠️  正在进行全量还原操作，这会覆盖所有备份关联的系统配置文件。\n输入 'YES' 确认继续", type=str)
             if confirm != 'YES':
-                click.echo("全量还原已取消")
+                if is_json:
+                    emit_json({"status": "cancelled", "command": "restore", "reason": "用户取消"})
+                else:
+                    click.echo("全量还原已取消")
                 return
-            log.info("开始执行全量还原")
-            execute_restore(config, force=force)
+        log.info("开始执行全量还原")
+        execute_restore(config, force=force, dry_run=dry_run)
 
-        log.ok("还原完成")
-    except Exception as e:
-        logger = logging.getLogger(APP_NAME)
-        logger.error(traceback.format_exc())
-        sys.exit(1)
+    if is_json:
+        emit_json({"status": "success", "command": "restore", "module": module,
+                   "dry_run": dry_run, "paths": list(target_paths) if target_paths else []})
+    else:
+        if dry_run:
+            log.ok("[DRY-RUN] 还原预览完成")
+        else:
+            log.ok("还原完成")
 
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='查看指定模块的权限信息')
-@click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
+@click.argument('target_paths', nargs=-1, type=str)
 @click.pass_context
+@_with_error_handling("perms")
 def perms(ctx, module, target_paths):
     """查看备份文件的权限信息"""
-    try:
-        # 从上下文获取配置路径
-        config_path = ctx.find_object(ConfMirrorContext).config_path
-        config = load_config(config_path)
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    is_json = conf_ctx.output_format == "json" if conf_ctx else False
 
-        # 检查配置是否加载成功
-        if config is None:
-            click.echo("❌ 配置加载失败，无法查看权限信息", err=True)
-            sys.exit(1)
+    config, logger = _require_config(ctx, task_name="权限查看")
 
-        logger = _get_logger_from_config(config)
-
-        # 根据参数决定权限查看方式
-        if module:
-            # 分模块查看权限
-            execute_perms(config, target_module_name=module)
-        elif target_paths:
-            # 指定路径查看权限 - 支持多个路径
-            for target_path in target_paths:
-                execute_perms(config, target_path=target_path)
+    # 根据参数决定权限查看方式
+    entries = []
+    if module:
+        entries = get_perms_data(config, target_module_name=module)
+    elif target_paths:
+        for target_path in target_paths:
+            entries.extend(get_perms_data(config, target_path=target_path))
+    else:
+        if is_json:
+            emit_json({"status": "error", "command": "perms", "error": "需要指定模块或路径"})
         else:
-            # 没有参数，列出所有模块
             click.echo("⚠️  需要指定模块或路径。")
+        sys.exit(ExitCode.CONFIG_ERROR)
 
-    except Exception as e:
-        logger = logging.getLogger(APP_NAME)
-        logger.error(traceback.format_exc())
-        click.echo(f"❌ 查看权限信息失败: {e}", err=True)
-        sys.exit(1)
+    if is_json:
+        emit_json({"status": "success", "command": "perms", "module": module,
+                   "paths": list(target_paths) if target_paths else [], "data": entries})
+    else:
+        display_perms_info(entries)
 
 @main.command()
 @click.option('-m', '--module', type=str, shell_complete=list_available_modules, help='列出指定模块的信息')
 @click.option('-d', '--detail', is_flag=True, help='输出模块的详细信息')
 @click.pass_context
+@_with_error_handling("ls")
 def ls(ctx, module, detail):
     """列出所有可用模块"""
-    try:
-        # 从上下文获取配置路径
-        config_path = ctx.find_object(ConfMirrorContext).config_path
-        config = load_config(config_path)
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    is_json = conf_ctx.output_format == "json" if conf_ctx else False
 
-        # 检查配置是否加载成功
-        if config is None:
-            click.echo("❌ 配置加载失败，无法列出模块", err=True)
-            sys.exit(1)
+    config, logger = _require_config(ctx, task_name="模块列出")
+    entries = get_modules_data(config, module_name=module, detail=detail)
 
-        logger = _get_logger_from_config(config)
+    if entries is None:
+        if is_json:
+            emit_json({"status": "error", "command": "ls", "error": f"未找到模块: {module}"})
+        else:
+            click.echo(f"❌ 未找到模块: {module}", err=True)
+        sys.exit(ExitCode.CONFIG_ERROR)
 
-        # 列出所有模块或指定模块
-        execute_list(config, module_name=module, detail=detail)
-
-    except Exception as e:
-        logger = logging.getLogger(APP_NAME)
-        logger.error(traceback.format_exc())
-        click.echo(f"❌ 列出模块失败: {e}", err=True)
-        sys.exit(1)
+    if is_json:
+        emit_json({"status": "success", "command": "ls", "module": module, "detail": detail, "data": entries})
+    else:
+        display_modules(entries, detail=detail)
 
 
 @main.command()
@@ -359,80 +475,86 @@ def ls(ctx, module, detail):
 @click.option('-d', '--detail', is_flag=True, help='输出详细的文件内容差异')
 @click.argument('target_paths', nargs=-1, type=click.Path(exists=False))
 @click.pass_context
+@_with_error_handling("diff")
 def diff(ctx, module, detail, target_paths):
     """对比源文件与备份文件的差异"""
-    try:
-        # 从上下文获取配置路径
-        config_path = ctx.find_object(ConfMirrorContext).config_path
-        config = load_config(config_path)
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    is_json = conf_ctx.output_format == "json" if conf_ctx else False
 
-        if config is None:
-            click.echo("❌ 配置加载失败", err=True)
-            sys.exit(1)
+    config, logger = _require_config(ctx, task_name="差异对比")
 
-        logger = _get_logger_from_config(config)
-
-        # 根据参数决定差异对比方式
-        if module:
-            # 对比整个模块
-            diff_module(config, module, detail)
-        elif target_paths:
-            diff_paths(config, target_paths, detail)
+    if module:
+        diff_module(config, module, detail, output_format=conf_ctx.output_format if conf_ctx else "human")
+    elif target_paths:
+        diff_paths(config, target_paths, detail, output_format=conf_ctx.output_format if conf_ctx else "human")
+    else:
+        if is_json:
+            emit_json({"status": "error", "command": "diff", "error": "需要指定模块或路径"})
         else:
             click.echo("⚠️  需要指定模块或路径。")
+        sys.exit(ExitCode.CONFIG_ERROR)
 
-    except Exception as e:
-        logger = logging.getLogger(APP_NAME)
-        logger.error(traceback.format_exc())
-        click.echo(f"❌ 差异对比失败: {e}", err=True)
-        sys.exit(1)
+    if is_json:
+        # diff_module / diff_paths 内部已处理 JSON 输出
+        pass
 
 @main.command()
 @click.option('-m', '--message', type=str, help='自定义提交信息')
 @click.pass_context
 def sync(ctx, message):
     """手动触发快速同步到远端仓库"""
+    conf_ctx = ctx.find_object(ConfMirrorContext)
+    is_json = conf_ctx.output_format == "json" if conf_ctx else False
+    dry_run = conf_ctx.dry_run if conf_ctx else False
+
     try:
-        # 从上下文获取配置路径
-        config_path = ctx.find_object(ConfMirrorContext).config_path
-        config = load_config(config_path)
-
-        if config is None:
-            click.echo("❌ 配置加载失败，无法执行同步任务", err=True)
-            sys.exit(1)
-
+        config, logger = _require_config(ctx, task_name="同步")
+        log = ModuleLog("cli", logger)
         settings = config.settings
         name = settings.name
         backup_root = settings.backup_root
 
-        logger = _get_logger_from_config(config)
-        log = ModuleLog("cli", logger)
-        log.info("开始执行手动同步到远端仓库")
+        if dry_run and not is_json:
+            log.info("[DRY-RUN] 预览模式，不实际执行同步")
 
-        # 执行 Git 提交和推送
         if message:
             msg = message
         else:
-            # 使用默认消息格式
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             msg = f"[{timestamp}] 手动同步: {name}"
-        success = git_auto_commit_and_push(
-            repo_path=backup_root,  # 使用配置文件所在目录
+
+        if dry_run:
+            if is_json:
+                emit_json({"status": "success", "command": "sync", "dry_run": True,
+                           "message": msg, "repo_path": str(backup_root)})
+            else:
+                log.ok(f"[DRY-RUN] 将执行: git commit -m '{msg}' && git push")
+            return
+
+        success, error_msg = git_auto_commit_and_push(
+            repo_path=backup_root,
             message=msg,
-            auto_push=True,  # 手动同步总是推送
-            logger=logger
+            auto_push=True,
         )
 
         if success:
-            log.ok("手动同步完成")
+            if is_json:
+                emit_json({"status": "success", "command": "sync", "message": msg})
+            else:
+                log.ok("手动同步完成")
         else:
-            log.error("手动同步失败")
-            sys.exit(1)
+            if is_json:
+                emit_json({"status": "error", "command": "sync", "error": error_msg})
+            else:
+                log.error(f"手动同步失败: {error_msg}")
+            sys.exit(ExitCode.PARTIAL_FAILURE)
 
     except Exception as e:
         logger = logging.getLogger(APP_NAME)
         logger.error(traceback.format_exc())
-        sys.exit(1)
+        if is_json:
+            emit_json({"status": "error", "command": "sync", "error": str(e)})
+        sys.exit(ExitCode.CONFIG_ERROR)
 
 
 @main.group()
@@ -441,15 +563,18 @@ def global_config_path():
     pass
 
 
+_log_global = ModuleLog("cli", logging.getLogger(APP_NAME))
+
+
 @global_config_path.command()
 @click.argument('path', type=click.Path(exists=True))
 def set(path):
     """设置全局配置文件路径"""
     success = set_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH, path)
     if success:
-        click.echo(f"✅ 全局配置路径已设置为 {path}")
+        _log_global.ok(f"全局配置路径已设置为 {path}")
     else:
-        click.echo(f"❌ 设置全局配置路径失败", err=True)
+        _log_global.error("设置全局配置路径失败")
 
 
 @global_config_path.command()
@@ -457,9 +582,9 @@ def remove():
     """移除全局配置文件路径"""
     success = remove_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH)
     if success:
-        click.echo(f"✅ 全局配置路径已移除")
+        _log_global.ok("全局配置路径已移除")
     else:
-        click.echo(f"❌ 移除全局配置路径失败", err=True)
+        _log_global.error("移除全局配置路径失败")
 
 
 @global_config_path.command()

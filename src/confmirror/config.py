@@ -1,4 +1,5 @@
 import logging
+import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -159,36 +160,116 @@ def resolve_config_path(custom_config_path: Optional[str] = None) -> Path:
     return Path.cwd() / CONFIG_FILENAME
 
 
+def _build_settings(settings_dict: dict) -> Settings:
+    """通过 dataclass fields 反射自动映射，减少硬编码。"""
+    path_fields = {"backup_root", "script_hooks_dir", "log_dir"}
+    kwargs: dict[str, Any] = {}
+    for f in dataclasses.fields(Settings):
+        key = getattr(ConfigKeys, f.name.upper())
+        value = settings_dict[key]
+        if f.name in path_fields:
+            value = Path(value)
+        kwargs[f.name] = value
+    return Settings(**kwargs)
+
+
+def _build_module(module_dict: dict) -> ModuleConfig:
+    """通过 dataclass fields 反射自动映射，减少硬编码。"""
+    kwargs: dict[str, Any] = {}
+    for f in dataclasses.fields(ModuleConfig):
+        key = getattr(ConfigKeys, f"MOD_{f.name.upper()}")
+        if f.name == "script_lang":
+            value = module_dict.get(key, "bash")
+        else:
+            value = module_dict.get(key)
+        kwargs[f.name] = value
+    return ModuleConfig(**kwargs)
+
+
 def _dict_to_config(config_dict: dict) -> Config:
     """将处理后的字典转换为 Config dataclass"""
     settings_dict = config_dict[ConfigKeys.SECTION_SETTINGS]
     modules_dict = config_dict[ConfigKeys.SECTION_MODULES]
 
-    settings = Settings(
-        name=settings_dict[ConfigKeys.NAME],
-        backup_root=Path(settings_dict[ConfigKeys.BACKUP_ROOT]),
-        script_hooks_dir=Path(settings_dict[ConfigKeys.SCRIPT_HOOKS_DIR]),
-        log_dir=Path(settings_dict[ConfigKeys.LOG_DIR]),
-        log_max_lines=settings_dict[ConfigKeys.LOG_MAX_LINES],
-        git_auto_commit=settings_dict[ConfigKeys.GIT_AUTO_COMMIT],
-        git_auto_push=settings_dict[ConfigKeys.GIT_AUTO_PUSH],
-        backup_file_mode=settings_dict[ConfigKeys.BACKUP_FILE_MODE],
-        backup_dir_mode=settings_dict[ConfigKeys.BACKUP_DIR_MODE],
-    )
-
-    modules = [
-        ModuleConfig(
-            name=m[ConfigKeys.MOD_NAME],
-            include_paths=m.get(ConfigKeys.MOD_INCLUDE_PATHS),
-            exclude_paths=m.get(ConfigKeys.MOD_EXCLUDE_PATHS),
-            script=m.get(ConfigKeys.MOD_SCRIPT),
-            parent_path=m.get(ConfigKeys.MOD_PARENT_PATH),
-            script_lang=m.get(ConfigKeys.MOD_SCRIPT_LANG, "bash"),
-        )
-        for m in modules_dict
-    ]
+    settings = _build_settings(settings_dict)
+    modules = [_build_module(m) for m in modules_dict]
 
     return Config(settings=settings, modules=modules)
+
+
+def _load_yaml(config_path: Path) -> Optional[dict]:
+    """加载并解析 YAML 配置文件"""
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except Exception as e:
+        _log.error(f"读取配置文件时发生错误: {e}")
+        return None
+
+    if not isinstance(data, dict):
+        _log.error(f"{config_path} 必须是一个 YAML 映射(dict)")
+        return None
+
+    return data
+
+
+def _apply_defaults(config: dict, config_path: Path) -> None:
+    """填充 settings 和 modules 的默认值（原地修改）"""
+    settings = config.setdefault(ConfigKeys.SECTION_SETTINGS, {})
+    settings.setdefault(ConfigKeys.NAME, config_path.parent.name)
+    settings.setdefault(ConfigKeys.BACKUP_ROOT, "./mirror")
+    settings.setdefault(ConfigKeys.SCRIPT_HOOKS_DIR, "./script-hooks")
+    settings.setdefault(ConfigKeys.LOG_DIR, "./logs")
+    settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
+    settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
+    settings.setdefault(ConfigKeys.LOG_MAX_LINES, 1000)
+    settings.setdefault(ConfigKeys.BACKUP_FILE_MODE, "0o644")
+    settings.setdefault(ConfigKeys.BACKUP_DIR_MODE, "0o755")
+    config.setdefault(ConfigKeys.SECTION_MODULES, [])
+
+
+def _normalize_paths(config: dict, config_path: Path) -> bool:
+    """将 settings 中的相对路径转换为绝对路径（原地修改）。
+
+    Returns:
+        bool: 路径解析成功返回 True，否则返回 False
+    """
+    base = config_path.parent
+    settings = config[ConfigKeys.SECTION_SETTINGS]
+    for key in (ConfigKeys.BACKUP_ROOT, ConfigKeys.SCRIPT_HOOKS_DIR, ConfigKeys.LOG_DIR):
+        try:
+            settings[key] = (base / settings[key]).resolve()
+        except (OSError, RuntimeError) as e:
+            _log.error(f"路径解析失败: {base / settings[key]} ({e})")
+            return False
+    return True
+
+
+def _normalize_modules(config: dict, config_path: Path) -> bool:
+    """标准化模块字段，返回是否成功"""
+    modules = config[ConfigKeys.SECTION_MODULES]
+    for i, mod in enumerate(modules):
+        if not isinstance(mod, dict):
+            _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}] 必须是映射")
+            return False
+        if ConfigKeys.MOD_NAME not in mod:
+            _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
+            return False
+
+        # 如果模块中有 parent_path，则将其转换为绝对路径
+        if ConfigKeys.MOD_PARENT_PATH in mod:
+            parent_path = mod[ConfigKeys.MOD_PARENT_PATH]
+            if parent_path:
+                parent_path_path = Path(parent_path)
+                if not parent_path_path.is_absolute():
+                    parent_path_path = config_path.parent / parent_path_path
+                mod[ConfigKeys.MOD_PARENT_PATH] = str(parent_path_path.resolve())
+
+        # 设置默认脚本语言
+        if ConfigKeys.MOD_SCRIPT in mod:
+            mod.setdefault(ConfigKeys.MOD_SCRIPT_LANG, "bash")
+
+    return True
 
 
 def load_config(custom_config_path: Optional[str] = None) -> Optional[Config]:
@@ -208,74 +289,21 @@ def load_config(custom_config_path: Optional[str] = None) -> Optional[Config]:
         _log.error(f"请检查 {config_path} 文件格式是否正确")
         return None
 
-    try:
-        with open(config_path, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-    except Exception as e:
-        _log.error(f"读取配置文件时发生错误: {e}")
+    config = _load_yaml(config_path)
+    if config is None:
         return None
-
-    if not isinstance(config, dict):
-        raise ValueError(f"{config_path} 必须是一个 YAML 映射(dict)")
 
     # 验证配置结构
     if not validate_config_structure(config):
         _log.error(f"请修正 {config_path} 文件中的配置结构问题")
         return None
 
-    settings_raw = config.get(ConfigKeys.SECTION_SETTINGS)
-    if settings_raw is None:
-        settings = {}
-        config[ConfigKeys.SECTION_SETTINGS] = settings
-    else:
-        settings = settings_raw
-
-    # 默认值
-    settings.setdefault(ConfigKeys.NAME, config_path.parent.name)
-    settings.setdefault(ConfigKeys.BACKUP_ROOT, "./mirror")
-    settings.setdefault(ConfigKeys.SCRIPT_HOOKS_DIR, "./script-hooks")
-    settings.setdefault(ConfigKeys.LOG_DIR, "./logs")
-    settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
-    settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
-    settings.setdefault(ConfigKeys.LOG_MAX_LINES, 1000)
-    settings.setdefault(ConfigKeys.BACKUP_FILE_MODE, "0o644")
-    settings.setdefault(ConfigKeys.BACKUP_DIR_MODE, "0o755")
-
-    # 路径标准化（相对于配置文件所在目录）
-    base = config_path.parent
-    settings[ConfigKeys.BACKUP_ROOT] = (base / settings[ConfigKeys.BACKUP_ROOT]).resolve()
-    settings[ConfigKeys.SCRIPT_HOOKS_DIR] = (base / settings[ConfigKeys.SCRIPT_HOOKS_DIR]).resolve()
-    settings[ConfigKeys.LOG_DIR] = (base / settings[ConfigKeys.LOG_DIR]).resolve()
-
-    # 模块字段校验：modules[].name
-    modules_raw = config.get(ConfigKeys.SECTION_MODULES)
-    if modules_raw is None:
-        modules = []
-        config[ConfigKeys.SECTION_MODULES] = modules
-    else:
-        modules = modules_raw
-
-    # 标准化模块中的 parent_path 为绝对路径
-    for i, mod in enumerate(modules):
-        if not isinstance(mod, dict):
-            _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}] 必须是映射")
-            return None
-        if ConfigKeys.MOD_NAME not in mod:
-            _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
-            return None
-
-        # 如果模块中有 parent_path，则将其转换为绝对路径
-        if ConfigKeys.MOD_PARENT_PATH in mod:
-            parent_path = mod[ConfigKeys.MOD_PARENT_PATH]
-            if parent_path:
-                parent_path_path = Path(parent_path)
-                # 如果是相对路径，则相对于配置文件所在目录转换为绝对路径
-                if not parent_path_path.is_absolute():
-                    parent_path_path = config_path.parent / parent_path_path
-                mod[ConfigKeys.MOD_PARENT_PATH] = str(parent_path_path.resolve())
-
-        # 设置默认脚本语言
-        if ConfigKeys.MOD_SCRIPT in mod:
-            mod.setdefault(ConfigKeys.MOD_SCRIPT_LANG, "bash")
+    _apply_defaults(config, config_path)
+    if not _normalize_paths(config, config_path):
+        _log.error(f"请修正 {config_path} 文件中的路径配置")
+        return None
+    if not _normalize_modules(config, config_path):
+        _log.error(f"请修正 {config_path} 文件中的配置结构问题")
+        return None
 
     return _dict_to_config(config)

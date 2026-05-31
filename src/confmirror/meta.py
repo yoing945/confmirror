@@ -2,21 +2,40 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
+logger = logging.getLogger(__name__)
 
-def write_meta(path: Path, mode: str, uid: int, gid: int, ftype: str):
-    # 根据文件类型选择元数据文件后缀
-    if ftype == "dir":
-        # 目录使用 .dir.meta 后缀以避免与同名文件冲突
-        meta = path.with_name(path.name + '.dir.meta')
-    else:
-        # 文件使用 .meta 后缀
-        meta = path.with_suffix(path.suffix + ".meta")
-    meta.parent.mkdir(parents=True, exist_ok=True)
-    with open(meta, "w") as f:
-        f.write(f"mode:{mode}\n")
-        f.write(f"uid:{uid}\n")
-        f.write(f"gid:{gid}\n")
-        f.write(f"type:{ftype}\n")
+
+def write_meta(path: Path, mode: str, uid: int, gid: int, ftype: str) -> bool:
+    """写入元数据文件。
+
+    Args:
+        path: 要记录元数据的路径
+        mode: 权限模式
+        uid: 用户 ID
+        gid: 组 ID
+        ftype: 类型（"file" 或 "dir"）
+
+    Returns:
+        bool: 写入成功返回 True，失败返回 False
+    """
+    try:
+        # 根据文件类型选择元数据文件后缀
+        if ftype == "dir":
+            # 目录使用 .dir.meta 后缀以避免与同名文件冲突
+            meta = path.with_name(path.name + '.dir.meta')
+        else:
+            # 文件使用 .meta" 后缀
+            meta = path.with_suffix(path.suffix + ".meta")
+        meta.parent.mkdir(parents=True, exist_ok=True)
+        with open(meta, "w") as f:
+            f.write(f"mode:{mode}\n")
+            f.write(f"uid:{uid}\n")
+            f.write(f"gid:{gid}\n")
+            f.write(f"type:{ftype}\n")
+        return True
+    except (OSError, IOError) as e:
+        logger.error(f"写入元数据失败 {path}: {e}")
+        return False
 
 
 def read_meta(path: Path):

@@ -10,6 +10,7 @@
 - **生产就绪**：支持交互确认、分级日志、错误还原，避免误操作
 - **Git 集成**：可与 Git 结合使用，实现历史追溯、差异对比、远程同步
 - **智能补全**：支持命令和模块名称的自动补全功能
+- **🤖 Agent 友好**：支持 `--format json` 结构化输出、`--dry-run` 预览、`--yes` 非交互模式，便于 AI Agent 集成
 
 ## 📦 安装
 
@@ -75,6 +76,54 @@ sudo confmirror restore /etc/ssh/sshd_config
 # 全量还原
 sudo confmirror restore
 ```
+
+## 🤖 AI Agent 快速开始
+
+ConfMirror 对 AI Agent 友好，支持结构化 JSON 输出和非交互执行。
+
+### Agent 调用示例
+
+```bash
+# 结构化输出（JSON）
+confmirror backup --module nginx --format json
+
+# 预览操作（不实际执行）
+confmirror backup --module nginx --dry-run --format json
+
+# 非交互模式（跳过所有确认提示）
+confmirror backup --yes
+confmirror restore --yes
+
+# 组合使用：Agent 安全调用
+confmirror backup --module nginx --dry-run --format json
+# → 评估影响后，去掉 --dry-run 实际执行
+confmirror backup --module nginx --format json
+```
+
+### JSON 输出示例
+
+```bash
+$ confmirror diff --module nginx --format json
+{
+  "status": "success",
+  "command": "diff",
+  "module": "nginx",
+  "added": [],
+  "deleted": [],
+  "changed": [
+    {
+      "source": "/etc/nginx/nginx.conf",
+      "backup": "mirror/etc/nginx/nginx.conf",
+      "content_same": false,
+      "meta_same": true,
+      "unified_diff": ["--- backup: nginx.conf", "+++ source: nginx.conf", "@@ -1 +1 @@", "-old", "+new"]
+    }
+  ],
+  "unchanged": []
+}
+```
+
+> 💡 **提示**：`--format json` 会自动抑制终端日志输出，确保 stdout 为纯净的 JSON，便于 Agent 解析。
 
 ## 🔧 配置详解
 
@@ -232,6 +281,19 @@ confmirror global-config-path remove
 ```
 
 全局配置文件存放在 `~/.config/confmirror/config.yaml`，遵循 XDG Base Directory 规范。
+
+### 全局选项
+
+所有子命令都支持以下全局选项：
+
+| 选项 | 说明 | 示例 |
+|------|------|------|
+| `--format {human,json}` | 输出格式，默认 `human` | `confmirror ls --format json` |
+| `--dry-run` | 预览模式，不实际执行 | `confmirror backup --dry-run` |
+| `--yes` | 非交互模式，跳过所有确认 | `confmirror restore --yes` |
+| `--config <path>` | 指定配置文件路径 | `confmirror backup --config /path/to/config.yaml` |
+| `--version` | 显示版本 | `confmirror --version` |
+| `--help` | 显示帮助 | `confmirror backup --help` |
 
 ### 其他命令
 
@@ -445,6 +507,17 @@ git config core.sparseCheckout true
 git read-tree -m -u HEAD
 ```
 
+
+## 退出码
+
+ConfMirror 使用标准化退出码，便于脚本和 Agent 判断执行结果：
+
+| 退出码 | 含义 | 场景 |
+|--------|------|------|
+| `0` | 成功 | 命令正常完成 |
+| `1` | 配置错误 | 配置文件加载失败、参数错误 |
+| `2` | 权限错误 | restore 非 root 运行 |
+| `3` | 部分失败 | 某些文件备份/还原失败，但其他成功 |
 
 ## 常见问题
 

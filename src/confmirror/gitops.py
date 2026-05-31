@@ -12,7 +12,7 @@ _log = ModuleLog("git", logger)
 
 
 def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = False,
-                             remote_name: str = "origin", branch: Optional[str] = None) -> bool:
+                             remote_name: str = "origin", branch: Optional[str] = None) -> tuple[bool, str]:
     """
     自动提交并可选推送到远程仓库
 
@@ -24,7 +24,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
         branch: 指定分支，默认使用当前分支
 
     Returns:
-        bool: 操作是否成功
+        tuple[bool, str]: (是否成功, 错误信息)
     """
     try:
         # 检查是否为git仓库
@@ -34,8 +34,20 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
         )
         if result.returncode != 0:
             _log.warn("当前目录不是Git仓库，跳过Git操作")
-            return False
+            return False, "当前目录不是Git仓库"
         _log.info(f"仓库路径: {repo_path}")
+
+        # 检查 git 用户名/邮箱是否已配置
+        for config_key in ["user.name", "user.email"]:
+            config_result = subprocess.run(
+                ["git", "config", config_key],
+                cwd=repo_path, capture_output=True, text=True
+            )
+            if config_result.returncode != 0 or not config_result.stdout.strip():
+                error_msg = f"Git {config_key} 未配置，请先执行: git config --global {config_key} 'Your Name/Email'"
+                _log.error(error_msg)
+                return False, error_msg
+
         # 添加所有变更
         subprocess.run(["git", "add", "."], cwd=repo_path, check=True, capture_output=True)
 
@@ -46,7 +58,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
         )
         if not result.stdout.strip():
             _log.info("没有变更需要提交")
-            return True
+            return True, ""
 
         # 提交变更
         subprocess.run(
@@ -73,7 +85,7 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
 
             if remote_result.returncode != 0:
                 _log.warn(f"远程仓库 '{remote_name}' 未配置，跳过推送")
-                return True
+                return True, ""
 
             # 执行推送
             push_result = subprocess.run(
@@ -85,9 +97,11 @@ def git_auto_commit_and_push(repo_path: Path, message: str, auto_push: bool = Fa
                 _log.ok(f"已推送到 {remote_name}/{branch}")
             else:
                 _log.warn(f"推送失败: {push_result.stderr}")
-                return False
+                return False, f"推送失败: {push_result.stderr}"
 
-        return True
+        return True, ""
 
     except subprocess.CalledProcessError as e:
-        raise RuntimeError(f"Git 操作失败: {e.stderr if hasattr(e, 'stderr') else str(e)}")
+        error_msg = f"Git 操作失败: {e.stderr if hasattr(e, 'stderr') else str(e)}"
+        _log.error(error_msg)
+        return False, error_msg

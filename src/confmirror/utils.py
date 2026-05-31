@@ -1,5 +1,6 @@
-import logging
 import fnmatch
+import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -14,26 +15,32 @@ logger = logging.getLogger(__name__)
 _log = ModuleLog("script", logger)
 
 
-def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "") -> bool:
+def should_exclude_path(
+    path: Path,
+    exclude_patterns: Optional[list] = None,
+    parent_path: str = "",
+    spec: Optional[pathspec.GitIgnoreSpec] = None,
+) -> bool:
     """
     检查路径是否应该被排除
 
     Args:
         path: 要检查的路径
-        exclude_patterns: 排除模式列表
+        exclude_patterns: 排除模式列表（仅在 spec 为 None 时使用）
         parent_path: 父路径，用于相对于 parent_path 的排除模式
+        spec: 预编译的 pathspec 对象（推荐在循环外预编译后传入）
 
     Returns:
         bool: 如果应该排除则返回True，否则返回False
     """
-    if not exclude_patterns:
+    if spec is None and not exclude_patterns:
         return False
-    
-    # 使用 pathspec 创建一个 gitignore 风格的路径规范
-    spec = pathspec.GitIgnoreSpec.from_lines(exclude_patterns)
+
     if spec is None:
-        return False
-    
+        spec = pathspec.GitIgnoreSpec.from_lines(exclude_patterns or [])
+        if spec is None:
+            return False
+
     # 获取相对于 parent_path 的路径
     if parent_path:
         try:
@@ -44,7 +51,7 @@ def should_exclude_path(path: Path, exclude_patterns: list, parent_path: str = "
             path_str = str(path.as_posix())
     else:
         path_str = str(path.as_posix())
-    
+
     # 使用 pathspec 检查路径是否匹配排除模式
     return spec.match_file(path_str)
 
@@ -70,7 +77,9 @@ def get_src_path_from_backup_full_path(config: Config, full_path_str: str) -> Pa
 
 def find_matching_module_with_path(modules: List[ModuleConfig], path: Path) -> Optional[ModuleConfig]:
     """
-    查找包含指定路径的模块
+    查找包含指定路径的模块。
+
+    支持 glob 模式匹配（如 `/etc/nginx/*.conf`）。
 
     Args:
         modules: 模块配置列表
@@ -83,12 +92,16 @@ def find_matching_module_with_path(modules: List[ModuleConfig], path: Path) -> O
         if module.include_paths is not None:
             parent_path = module.parent_path or ""
             for path_str in module.include_paths:
-                if parent_path:
-                    module_path = Path(parent_path) / path_str
+                full_pattern = str(Path(parent_path) / path_str) if parent_path else path_str
+
+                # 如果包含 glob 通配符，用 fnmatch 匹配
+                if '*' in full_pattern or '?' in full_pattern or '[' in full_pattern:
+                    if fnmatch.fnmatch(str(path), full_pattern):
+                        return module
                 else:
-                    module_path = Path(path_str)
-                if path.is_relative_to(module_path):
-                    return module
+                    module_path = Path(full_pattern)
+                    if path.is_relative_to(module_path):
+                        return module
     return None
 
 
@@ -107,7 +120,7 @@ def run_shell_script(script_rel: str, settings: Settings, action: str) -> bool:
     return run_script(script_rel, settings, action, script_lang="bash")
 
 
-def run_script(script_rel: str, settings: Settings, action: str, script_lang: str = "bash") -> bool:
+def run_script(script_rel: str, settings: Settings, action: str, script_lang: str = "bash", timeout: int = 300) -> bool:
     """
     执行脚本，支持多种脚本语言
 
@@ -116,6 +129,7 @@ def run_script(script_rel: str, settings: Settings, action: str, script_lang: st
         settings: 配置设置对象
         action: 操作类型（backup/restore）
         script_lang: 脚本语言（bash/python/python3/ruby/node等）
+        timeout: 脚本超时时间（秒），默认300秒
 
     Returns:
         bool: 脚本执行成功返回True，否则返回False
@@ -159,14 +173,27 @@ def run_script(script_rel: str, settings: Settings, action: str, script_lang: st
             # 指定脚本所在目录为工作目录
             cwd=script.parent,
             check=True,
-            # 直接输出到终端
-            capture_output=False,  
-            text=True
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
+        if result.stdout:
+            _log.info(f"脚本输出: {result.stdout.strip()}")
         _log.info("脚本执行完成")
         return True
     except subprocess.CalledProcessError as e:
         _log.error(f"脚本执行异常，返回码: {e.returncode}")
+        if e.stdout:
+            _log.error(f"stdout: {e.stdout.strip()}")
+        if e.stderr:
+            _log.error(f"stderr: {e.stderr.strip()}")
+        return False
+    except subprocess.TimeoutExpired as e:
+        _log.error(f"脚本执行超时（>{timeout}秒）")
+        if e.stdout:
+            _log.error(f"stdout: {e.stdout.strip()}")
+        if e.stderr:
+            _log.error(f"stderr: {e.stderr.strip()}")
         return False
     except FileNotFoundError:
         _log.error(f"找不到解释器 '{script_lang}'，请确保已安装")
@@ -178,7 +205,10 @@ def run_script(script_rel: str, settings: Settings, action: str, script_lang: st
 
 def get_script_shebang(script_path: Path) -> Optional[str]:
     """
-    读取脚本的shebang行来自动检测脚本语言
+    读取脚本的 shebang 行来自动检测脚本语言。
+
+    通过提取解释器基础名称进行精确匹配，避免子串误匹配
+    （如 `fish` 不会误匹配为 `sh`）。
 
     Args:
         script_path: 脚本路径
@@ -189,27 +219,33 @@ def get_script_shebang(script_path: Path) -> Optional[str]:
     try:
         with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
             first_line = f.readline().strip()
-            if first_line.startswith('#!'):
-                # 解析shebang
-                shebang = first_line[2:].strip()
-                # 提取解释器名称
-                if 'python3' in shebang:
-                    return 'python3'
-                elif 'python' in shebang:
-                    return 'python'
-                elif 'bash' in shebang:
-                    return 'bash'
-                elif 'sh' in shebang:
-                    return 'sh'
-                elif 'ruby' in shebang:
-                    return 'ruby'
-                elif 'node' in shebang:
-                    return 'node'
-                elif 'perl' in shebang:
-                    return 'perl'
-                else:
-                    # 返回完整路径
-                    return shebang.split()[-1]
+            if not first_line.startswith('#!'):
+                return None
+
+            shebang = first_line[2:].strip()
+            parts = shebang.split()
+
+            # 处理 /usr/bin/env python3 格式
+            if len(parts) >= 2 and parts[0].endswith('/env'):
+                interpreter = parts[-1]
+            else:
+                interpreter = parts[0]
+
+            name = os.path.basename(interpreter)
+
+            interpreter_map = {
+                'python3': 'python3',
+                'python': 'python',
+                'python2': 'python2',
+                'bash': 'bash',
+                'sh': 'sh',
+                'ruby': 'ruby',
+                'node': 'node',
+                'nodejs': 'node',
+                'perl': 'perl',
+                'php': 'php',
+            }
+            return interpreter_map.get(name, interpreter)
     except (OSError, UnicodeDecodeError):
         pass
     return None

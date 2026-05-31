@@ -7,14 +7,18 @@ from typing import Optional, Dict, Any
 
 from .config import Config, ModuleConfig, Settings
 from .meta import read_meta
-from .utils import find_matching_module_with_path, run_shell_script, should_exclude_path
+from .utils import find_matching_module_with_path, run_script, should_exclude_path
 from .logger import ModuleLog
+
+import pathspec
 
 logger = logging.getLogger(__name__)
 _log = ModuleLog("restore", logger)
 
 
-def execute_restore(config: Config, target_module_name: Optional[str] = None, target_path: Optional[str] = None, force: bool = False) -> None:
+def execute_restore(config: Config, target_module_name: Optional[str] = None,
+                    target_path: Optional[str] = None, force: bool = False,
+                    dry_run: bool = False) -> None:
     """
     执行还原操作
 
@@ -23,8 +27,11 @@ def execute_restore(config: Config, target_module_name: Optional[str] = None, ta
         target_module_name: 指定要还原的模块名称
         target_path: 指定要还原的路径
         force: 是否强制覆盖还原（默认为False，即差异还原）
+        dry_run: 是否为预览模式（不实际执行）
     """
-    if os.name != 'nt' and os.getuid() != 0:
+    if dry_run:
+        _log.info("[DRY-RUN] 预览模式，不实际执行还原操作")
+    elif os.name != 'nt' and os.getuid() != 0:
         _log.warn("当前未以 root 身份运行，restore 操作可能因权限不足而失败。建议：sudo confmirror restore ...")
 
     if target_module_name:
@@ -33,17 +40,18 @@ def execute_restore(config: Config, target_module_name: Optional[str] = None, ta
         if not target_module:
             _log.error(f"配置中不存在模块 '{target_module_name}'")
             return
-        restore_module(target_module, config, force)
+        restore_module(target_module, config, force, dry_run=dry_run)
     elif target_path:
         # 还原指定路径
-        restore_single_path(target_path, config, force)
+        restore_single_path(target_path, config, force, dry_run=dry_run)
     else:
         # 全量还原
         for module in config.modules:
-            restore_module(module, config, force)
+            restore_module(module, config, force, dry_run=dry_run)
 
 
-def restore_module(module: ModuleConfig, config: Config, force: bool = False) -> None:
+def restore_module(module: ModuleConfig, config: Config, force: bool = False,
+                   dry_run: bool = False) -> None:
     """
     还原单个模块
 
@@ -51,6 +59,7 @@ def restore_module(module: ModuleConfig, config: Config, force: bool = False) ->
         module: 模块配置对象
         config: 配置对象
         force: 是否强制覆盖还原
+        dry_run: 是否为预览模式
     """
     settings = config.settings
     backup_root = settings.backup_root
@@ -58,9 +67,16 @@ def restore_module(module: ModuleConfig, config: Config, force: bool = False) ->
     module_name = module.name
     _log.info(f"开始还原模块: {module_name}")
 
+    if dry_run:
+        _log.info(f"[DRY-RUN] 预览模块 '{module_name}' 的还原内容")
+
     if module.script is not None:
-        script_rel = module.script
-        run_shell_script(script_rel, settings, "restore")
+        if dry_run:
+            _log.info(f"[DRY-RUN] 将执行脚本: {module.script}")
+        else:
+            script_rel = module.script
+            script_lang = module.script_lang or "bash"
+            run_script(script_rel, settings, "restore", script_lang)
 
     elif module.include_paths is not None:
         parent_path_str = module.parent_path or ""
@@ -89,12 +105,13 @@ def restore_module(module: ModuleConfig, config: Config, force: bool = False) ->
                 try:
                     rel_path = path.relative_to(backup_root)
                     original_path = Path('/') / rel_path
-                    restore_file_or_dir(original_path, backup_root, force)
+                    restore_file_or_dir(original_path, backup_root, force, dry_run=dry_run)
                 except ValueError:
                     _log.warn(f"路径不在备份根目录下 → {path}")
 
 
-def restore_single_path(target_path: str, config: Config, force: bool = False) -> None:
+def restore_single_path(target_path: str, config: Config, force: bool = False,
+                         dry_run: bool = False) -> None:
     """
     还原单个路径
 
@@ -102,6 +119,7 @@ def restore_single_path(target_path: str, config: Config, force: bool = False) -
         target_path: 目标路径
         config: 配置对象
         force: 是否强制覆盖还原
+        dry_run: 是否为预览模式
     """
     settings = config.settings
     backup_root = settings.backup_root
@@ -115,7 +133,7 @@ def restore_single_path(target_path: str, config: Config, force: bool = False) -
     # 获取排除路径模式和父路径
     all_exclude_patterns = module.exclude_paths or []
     parent_path = module.parent_path or ""
-    if should_exclude_path(Path(target_path), all_exclude_patterns, parent_path):
+    if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
         _log.skip(f"路径 '{target_path}' 被排除")
         return
 
@@ -133,19 +151,20 @@ def restore_single_path(target_path: str, config: Config, force: bool = False) -
         try:
             rel_path = Path(file_path).relative_to(backup_root)
             original_path = Path('/') / rel_path
-            restore_file_or_dir(original_path, backup_root, force)
+            restore_file_or_dir(original_path, backup_root, force, dry_run=dry_run)
         except ValueError:
             _log.warn(f"路径不在备份根目录下 → {file_path}")
 
-def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False):
+def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False,
+                          dry_run: bool = False):
     """
     还原单个文件或目录
 
     Args:
         original: 原始路径
         backup_root: 备份根目录
-        logger: 日志记录器
         force: 是否强制覆盖还原
+        dry_run: 是否为预览模式
     """
     # 获取备份路径
     backup = backup_root / str(original).lstrip("/")
@@ -166,6 +185,10 @@ def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False):
         if same_file(original, backup):
             _log.skip(f"文件信息无变化: {original}")
             return
+
+    if dry_run:
+        _log.info(f"[DRY-RUN] 将还原: {backup} -> {original} (类型: {meta['type']})")
+        return
 
     # 创建父目录
     original.parent.mkdir(parents=True, exist_ok=True)
@@ -192,6 +215,24 @@ def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False):
                         src_file = Path(src_dir) / file_
                         dst_file = dst_dir / file_
                         shutil.copy2(src_file, dst_file)
+
+            # 还原所有子目录的权限和属主（.dir.meta）
+            for meta_file in backup.rglob("*.dir.meta"):
+                dir_name = meta_file.name.replace(".dir.meta", "")
+                dir_in_backup = meta_file.parent / dir_name
+                try:
+                    rel_dir = dir_in_backup.relative_to(backup)
+                except ValueError:
+                    continue
+                dst_dir = original / rel_dir
+                dir_meta = read_meta(dir_in_backup)
+                if dir_meta and dst_dir.exists():
+                    try:
+                        os.chmod(dst_dir, int(dir_meta["mode"], 8))
+                        os.chown(dst_dir, int(dir_meta["uid"]), int(dir_meta["gid"]))
+                    except (PermissionError, OSError) as e:
+                        _log.error(f"无法还原目录权限 {dst_dir}: {e}")
+
             os.chmod(original, int(mode, 8))
             os.chown(original, uid, gid)
             _log.ok(f"{original}")

@@ -89,7 +89,7 @@ def rotate_log_file(log_file: Path, max_lines: int):
         f.writelines(kept)
 
 
-def resolve_log_path(log_dir: str, config_name: str = "") -> Path:
+def resolve_log_path(log_dir: str | Path, config_name: str = "") -> Path:
     """根据配置解析日志文件路径
 
     Args:
@@ -127,7 +127,7 @@ def setup_logger(log_file: Path, max_lines: int = DEFAULT_LOG_MAX_LINES) -> logg
 
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_formatter = logging.Formatter(
-        fmt="%(asctime)s [%(levelname)s] %(message)s",
+        fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     file_handler.setFormatter(file_formatter)

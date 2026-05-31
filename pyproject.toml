@@ -26,6 +26,7 @@ dev = [
     "build",
     "black",
     "isort",
+    "pyright>=1.1",
 ]
 
 [project.scripts]
@@ -47,3 +48,16 @@ include = '\.pyi? $ '
 profile = "black"
 multi_line_output = 3
 line_length = 88
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/__pycache__"]
+typeCheckingMode = "basic"
+pythonVersion = "3.13"
+reportMissingImports = true
+reportUndefinedVariable = true
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.39.6",
+]

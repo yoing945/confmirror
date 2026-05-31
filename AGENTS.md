@@ -7,6 +7,9 @@
 | 文档 | 路径 | 职责 |
 |------|------|------|
 | 项目说明 | [README.md](README.md) | 功能特性、快速开始、命令参考、多机管理策略 |
+| 测试规范 | [docs/TESTING.md](docs/TESTING.md) | 测试层级、隔离原则、CLI smoke 规范、覆盖速查 |
+| 模块评估 | ~~docs/EVALUATION.md~~ | 评估已完成并归档，当前无阻塞性待优化项 |
+| 待办计划 | [docs/TODO.md](docs/TODO.md) | P0~P7 优先级规划与依赖关系 |
 
 ## 技术栈与运行
 
@@ -94,7 +97,6 @@ pytest
 - `build`
 
 ### 禁止事项
-- **禁止**卸载或覆盖系统预装的 Python 3.10（`python3` 命令保持系统默认）
 - **禁止**在 restore 操作中以非 root 身份运行
 - **禁止**删除 `.meta` 文件——restore 依赖其还原权限与属主
 

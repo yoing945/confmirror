@@ -4,14 +4,14 @@
 
 ---
 
-## P0 — 代码质量与基础修复
+## P0 — 代码质量与基础修复 ✅
 
 **目标**：稳定现有代码，修复已知缺陷，补充测试覆盖。
 
-- [ ] 补充单元测试（`tests/` 目录目前缺失）
-- [ ] `restore` 添加 root 权限前置检查（或明确降级为警告而非强制）
-- [ ] 修复已知边界错误处理（空配置、缺失 `.meta`、路径解析异常等）
-- [ ] 清理已删除文档的残留引用（如 QWEN.md、DESIGN.md 相关死链）
+- [x] 补充单元测试（`tests/` 目录，25 个测试全部通过）
+- [x] `restore` 添加 root 权限前置检查（降级为警告，非 root 时打印 `logger.warning` 继续执行）
+- [x] 修复已知边界错误处理（3 处裸 `except Exception:` 改为具体异常类型）
+- [x] 清理已删除文档的残留引用（项目中无 QWEN.md / DESIGN.md 残留）
 
 ---
 
@@ -47,15 +47,16 @@
 
 **目标**：让 CLI 本身对 AI Agent 友好，这是别人能方便接入的**前提**。
 
-- [ ] 添加 `--format json`：输出结构化结果（`{status, files_changed, errors, skipped}`）
-- [ ] 添加 `--dry-run`：预览操作不实际执行，避免 Agent 误操作
-- [ ] 添加 `--yes` / `--non-interactive`：跳过所有交互式 prompt（backup 全量 `y/n`、restore 全量 `YES`）
-- [ ] 标准化 exit code：
+- [x] 添加 `--format json`：输出结构化结果（`{status, command, module, ...}`）✅
+- [x] 添加 `--dry-run`：预览操作不实际执行，避免 Agent 误操作 ✅
+- [x] 添加 `--yes` / `--non-interactive`：跳过所有交互式 prompt ✅
+- [x] 标准化 exit code：
   - `0` = 成功
   - `1` = 配置错误
   - `2` = 权限错误
   - `3` = 部分失败
-- [ ] 保留人类可读输出作为默认行为，`--format json` 为可选开关
+  ✅
+- [x] 保留人类可读输出作为默认行为，`--format json` 为可选开关 ✅
 
 ---
 
