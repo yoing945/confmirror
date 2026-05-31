@@ -190,9 +190,7 @@ log-backup.log
 
 # 测试文件
 test-logs/
-test_*.py
-*_test.py
-tests/
+# 保留 tests/ 目录提交到仓库，用于 CI
 test-manual/
 
 example*/
