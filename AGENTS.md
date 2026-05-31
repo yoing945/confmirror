@@ -8,7 +8,6 @@
 |------|------|------|
 | 项目说明 | [README.md](README.md) | 功能特性、快速开始、命令参考 |
 | 多机管理 | [docs/MULTI_SERVER.md](docs/MULTI_SERVER.md) | 多服务器配置同步策略 |
-| 技能定义 | [.agents/skills/confmirror/SKILL.md](.agents/skills/confmirror/SKILL.md) | AI 助手技能说明 |
 
 ## 技术栈与运行
 
