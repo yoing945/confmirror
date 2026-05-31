@@ -32,16 +32,16 @@ class ConfigKeys:
     GIT_AUTO_COMMIT = "git_auto_commit"
     GIT_AUTO_PUSH = "git_auto_push"
     LOG_MAX_LINES = "log_max_lines"
-    BACKUP_FILE_MODE = "backup_file_mode"
-    BACKUP_DIR_MODE = "backup_dir_mode"
+    MIRROR_FILE_MODE = "mirror_file_mode"
+    MIRROR_DIR_MODE = "mirror_dir_mode"
 
     # 模块键
     MOD_NAME = "name"
-    MOD_INCLUDE_PATHS = "include_paths"
+    MOD_PATHS = "paths"
     MOD_EXCLUDE_PATHS = "exclude_paths"
-    MOD_SCRIPT = "script"
-    MOD_PARENT_PATH = "parent_path"
-    MOD_SCRIPT_LANG = "script_lang"
+    MOD_HOOK = "hook"
+    MOD_BASE_PATH = "base_path"
+    MOD_HOOK_LANG = "hook_lang"
 
 
 @dataclass
@@ -54,19 +54,19 @@ class Settings:
     log_max_lines: int = 1000
     git_auto_commit: bool = False
     git_auto_push: bool = False
-    backup_file_mode: str = "0o644"
-    backup_dir_mode: str = "0o755"
+    mirror_file_mode: str = "0o644"
+    mirror_dir_mode: str = "0o755"
 
 
 @dataclass
 class ModuleConfig:
     """模块配置"""
     name: str
-    include_paths: Optional[List[str]] = None
+    paths: Optional[List[str]] = None
     exclude_paths: Optional[List[str]] = None
-    script: Optional[str] = None
-    parent_path: Optional[str] = None
-    script_lang: str = "bash"
+    hook: Optional[str] = None
+    base_path: Optional[str] = None
+    hook_lang: str = "bash"
 
 
 @dataclass
@@ -178,7 +178,7 @@ def _build_module(module_dict: dict) -> ModuleConfig:
     kwargs: dict[str, Any] = {}
     for f in dataclasses.fields(ModuleConfig):
         key = getattr(ConfigKeys, f"MOD_{f.name.upper()}")
-        if f.name == "script_lang":
+        if f.name == "hook_lang":
             value = module_dict.get(key, "bash")
         else:
             value = module_dict.get(key)
@@ -223,8 +223,8 @@ def _apply_defaults(config: dict, config_path: Path) -> None:
     settings.setdefault(ConfigKeys.GIT_AUTO_COMMIT, False)
     settings.setdefault(ConfigKeys.GIT_AUTO_PUSH, False)
     settings.setdefault(ConfigKeys.LOG_MAX_LINES, 1000)
-    settings.setdefault(ConfigKeys.BACKUP_FILE_MODE, "0o644")
-    settings.setdefault(ConfigKeys.BACKUP_DIR_MODE, "0o755")
+    settings.setdefault(ConfigKeys.MIRROR_FILE_MODE, "0o644")
+    settings.setdefault(ConfigKeys.MIRROR_DIR_MODE, "0o755")
     config.setdefault(ConfigKeys.SECTION_MODULES, [])
 
 
@@ -256,18 +256,18 @@ def _normalize_modules(config: dict, config_path: Path) -> bool:
             _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 缺失")
             return False
 
-        # 如果模块中有 parent_path，则将其转换为绝对路径
-        if ConfigKeys.MOD_PARENT_PATH in mod:
-            parent_path = mod[ConfigKeys.MOD_PARENT_PATH]
-            if parent_path:
-                parent_path_path = Path(parent_path)
-                if not parent_path_path.is_absolute():
-                    parent_path_path = config_path.parent / parent_path_path
-                mod[ConfigKeys.MOD_PARENT_PATH] = str(parent_path_path.resolve())
+        # 如果模块中有 base_path，则将其转换为绝对路径
+        if ConfigKeys.MOD_BASE_PATH in mod:
+            base_path = mod[ConfigKeys.MOD_BASE_PATH]
+            if base_path:
+                base_path_path = Path(base_path)
+                if not base_path_path.is_absolute():
+                    base_path_path = config_path.parent / base_path_path
+                mod[ConfigKeys.MOD_BASE_PATH] = str(base_path_path.resolve())
 
         # 设置默认脚本语言
-        if ConfigKeys.MOD_SCRIPT in mod:
-            mod.setdefault(ConfigKeys.MOD_SCRIPT_LANG, "bash")
+        if ConfigKeys.MOD_HOOK in mod:
+            mod.setdefault(ConfigKeys.MOD_HOOK_LANG, "bash")
 
     return True
 

@@ -8,11 +8,12 @@ version = "1.0.0"
 description = "系统配置备份与还原工具"
 readme = "README.md"
 authors = [{name = "yoing945", email = "yoing945@qq.com"}]
-license = {text = "MIT"}
+license = "MIT"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: POSIX :: Linux",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
     "PyYAML>=6.0",

@@ -32,7 +32,10 @@ def execute_restore(config: Config, target_module_name: Optional[str] = None,
     if dry_run:
         _log.info("[DRY-RUN] 预览模式，不实际执行还原操作")
     elif os.name != 'nt' and os.getuid() != 0:
-        _log.warn("当前未以 root 身份运行，restore 操作可能因权限不足而失败。建议：sudo confmirror restore ...")
+        _log.warn(
+            "当前未以 root 身份运行，restore 操作可能因权限不足而失败。\n"
+            "建议提权执行：sudo env \"PATH=$PATH\" confmirror restore ..."
+        )
 
     if target_module_name:
         # 还原指定模块
@@ -70,22 +73,22 @@ def restore_module(module: ModuleConfig, config: Config, force: bool = False,
     if dry_run:
         _log.info(f"[DRY-RUN] 预览模块 '{module_name}' 的还原内容")
 
-    if module.script is not None:
+    if module.hook is not None:
         if dry_run:
-            _log.info(f"[DRY-RUN] 将执行脚本: {module.script}")
+            _log.info(f"[DRY-RUN] 将执行脚本: {module.hook}")
         else:
-            script_rel = module.script
-            script_lang = module.script_lang or "bash"
-            run_script(script_rel, settings, "restore", script_lang)
+            script_rel = module.hook
+            hook_lang = module.hook_lang or "bash"
+            run_script(script_rel, settings, "restore", hook_lang)
 
-    elif module.include_paths is not None:
-        parent_path_str = module.parent_path or ""
+    elif module.paths is not None:
+        parent_path_str = module.base_path or ""
         backup_parent_path = backup_root / parent_path_str.lstrip('/')
 
         # 获取排除路径模式
         all_exclude_patterns = module.exclude_paths or []
 
-        for path_str in module.include_paths:
+        for path_str in module.paths:
             full_path_pattern = str(backup_parent_path / path_str.lstrip('/'))
             matched_paths = glob.glob(full_path_pattern, recursive=True)
 
@@ -132,7 +135,7 @@ def restore_single_path(target_path: str, config: Config, force: bool = False,
 
     # 获取排除路径模式和父路径
     all_exclude_patterns = module.exclude_paths or []
-    parent_path = module.parent_path or ""
+    parent_path = module.base_path or ""
     if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
         _log.skip(f"路径 '{target_path}' 被排除")
         return

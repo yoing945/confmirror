@@ -157,7 +157,7 @@ def _collect_files_for_paths(config: Config, target_paths: List[str]) -> tuple[s
         if not module:
             continue
         all_exclude_patterns = module.exclude_paths or []
-        parent_path = module.parent_path or ""
+        parent_path = module.base_path or ""
         if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
             continue
 
@@ -193,8 +193,8 @@ def _collect_files_for_module(config: Config, module: ModuleConfig) -> tuple[set
     """为模块收集源文件集合和备份文件集合。"""
     settings = config.settings
     backup_root = settings.backup_root
-    parent_path = module.parent_path or ""
-    include_paths = module.include_paths or []
+    parent_path = module.base_path or ""
+    include_paths = module.paths or []
     exclude_patterns = module.exclude_paths or []
 
     source_files_set = set()
@@ -240,7 +240,7 @@ def diff_module_core(config: Config, module_name: str, detail: bool = False) -> 
     backup_root = settings.backup_root
     target_module = next((m for m in config.modules if m.name == module_name), None)
 
-    if not target_module or target_module.script is not None:
+    if not target_module or target_module.hook is not None:
         return DiffResult(module_name=module_name, added=[], deleted=[], changed=[], unchanged=[])
 
     source_files_set, backup_files_set = _collect_files_for_module(config, target_module)

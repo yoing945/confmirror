@@ -89,9 +89,9 @@ def find_matching_module_with_path(modules: List[ModuleConfig], path: Path) -> O
         包含该路径的模块配置对象，如果未找到则返回None
     """
     for module in modules:
-        if module.include_paths is not None:
-            parent_path = module.parent_path or ""
-            for path_str in module.include_paths:
+        if module.paths is not None:
+            parent_path = module.base_path or ""
+            for path_str in module.paths:
                 full_pattern = str(Path(parent_path) / path_str) if parent_path else path_str
 
                 # 如果包含 glob 通配符，用 fnmatch 匹配

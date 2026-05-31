@@ -14,11 +14,11 @@ def _module_to_dict(module: ModuleConfig) -> Dict[str, Any]:
     """将模块配置转换为结构化字典"""
     return {
         "name": module.name,
-        "type": "script" if module.script is not None else "path",
-        "script": module.script,
-        "script_lang": module.script_lang,
-        "parent_path": module.parent_path,
-        "include_paths": module.include_paths,
+        "type": "script" if module.hook is not None else "path",
+        "hook": module.hook,
+        "hook_lang": module.hook_lang,
+        "base_path": module.base_path,
+        "paths": module.paths,
         "exclude_paths": module.exclude_paths,
     }
 
@@ -73,12 +73,12 @@ def _print_module_detail(entry: Dict[str, Any]) -> None:
 
     if entry['type'] == 'script':
         _log.info(f"  类型: 脚本模块")
-        _log.info(f"  脚本路径: {entry['script']}")
+        _log.info(f"  脚本路径: {entry['hook']}")
     else:
-        if entry.get('parent_path') is not None:
-            _log.info(f"  父目录: {entry['parent_path']}")
-        if entry.get('include_paths') is not None:
-            _log.info(f"  包含路径: {entry['include_paths']}")
+        if entry.get('base_path') is not None:
+            _log.info(f"  父目录: {entry['base_path']}")
+        if entry.get('paths') is not None:
+            _log.info(f"  包含路径: {entry['paths']}")
         if entry.get('exclude_paths') is not None:
             _log.info(f"  排除路径: {entry['exclude_paths']}")
 

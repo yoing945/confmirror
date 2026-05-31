@@ -149,11 +149,11 @@ confmirror global-config-path remove
     {
       "name": "ssh",
       "type": "path",
-      "parent_path": "/etc",
-      "include_paths": ["ssh/sshd_config"],
+      "base_path": "/etc",
+      "paths": ["ssh/sshd_config"],
       "exclude_paths": null,
       "script": null,
-      "script_lang": "bash"
+      "hook_lang": "bash"
     }
   ]
 }
@@ -208,14 +208,14 @@ settings:
 
 modules:
   - name: ssh
-    parent_path: /etc
-    include_paths:
+    base_path: /etc
+    paths:
       - ssh/sshd_config
       - ssh/ssh_config
 
   - name: nginx
-    parent_path: /etc/nginx
-    include_paths:
+    base_path: /etc/nginx
+    paths:
       - "*.conf"
       - "conf.d/*"
     exclude_paths:

@@ -35,7 +35,7 @@ def get_perms_data(config: Config, target_module_name: Optional[str] = None,
             _log.error(f"路径 '{target_path}' 不属于任何模块")
             return []
         all_exclude_patterns = module.exclude_paths or []
-        parent_path = module.parent_path or ""
+        parent_path = module.base_path or ""
         if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
             return []
         entries = get_perms_for_path(config, target_path)
@@ -102,16 +102,16 @@ def get_perms_for_module(module_name: str, config: Config) -> List[Dict]:
 
     perms_info = []
 
-    if target_module.script is not None:
+    if target_module.hook is not None:
         # 模块使用脚本备份，暂时不处理
         _log.error(f"脚本钩子模块 '{module_name}'不支持查看权限 ")
         return []
 
-    elif target_module.include_paths is not None:
-        parent_path_str = target_module.parent_path or ""
+    elif target_module.paths is not None:
+        parent_path_str = target_module.base_path or ""
         backup_parent_path = str(backup_root / parent_path_str.lstrip('/'))
 
-        for path_str in target_module.include_paths:
+        for path_str in target_module.paths:
             full_path_pattern = str(Path(backup_parent_path) / path_str)
             matched_paths = glob.glob(full_path_pattern, recursive=True)
             temp_info = matched_paths_to_perms_info(matched_paths)

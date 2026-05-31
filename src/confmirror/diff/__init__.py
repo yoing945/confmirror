@@ -106,12 +106,12 @@ def diff_module(config, module_name, detail=False, output_format="human"):
         click.echo(f"❌ 未找到模块: {module_name}")
         return
 
-    if target_module.script is not None:
+    if target_module.hook is not None:
         click.echo("脚本模块不支持差异对比")
         return
 
-    parent_path = target_module.parent_path or ""
-    include_paths = target_module.include_paths or []
+    parent_path = target_module.base_path or ""
+    include_paths = target_module.paths or []
     exclude_patterns = target_module.exclude_paths or []
 
     source_files_set = set()
@@ -183,7 +183,7 @@ def diff_paths(config, target_paths, detail=False, output_format="human"):
         if not module:
             return
         all_exclude_patterns = module.exclude_paths or []
-        parent_path = module.parent_path or ""
+        parent_path = module.base_path or ""
         if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
             continue
 

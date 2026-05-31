@@ -58,7 +58,7 @@ def execute_backup(config: Config, target_module_name: Optional[str] = None,
             return
         # 获取排除路径模式和父路径
         all_exclude_patterns = module.exclude_paths or []
-        parent_path = module.parent_path or ""
+        parent_path = module.base_path or ""
         if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
             _log.skip(f"路径 '{target_path}' 被排除")
             return
@@ -112,7 +112,7 @@ def _backup_directory(src_dir: Path, dest_dir: Path, settings: Settings, force: 
             _log.warn(f"目录元数据写入失败，继续备份子内容: {src_dir}")
 
         # 确保备份目录可读写
-        backup_dir_mode = int(settings.backup_dir_mode, 8)
+        backup_dir_mode = int(settings.mirror_dir_mode, 8)
         dest_dir.chmod(backup_dir_mode)
 
         _log.ok(f"→ {src_dir} (权限:{dir_mode} 用户:{src_stat.st_uid}:{src_stat.st_gid})")
@@ -171,7 +171,7 @@ def _backup_file(src: Path, dest: Path, settings: Settings, force: bool = False,
             _log.warn(f"文件元数据写入失败: {src}")
 
         # 设置备份文件权限，确保当前用户和 Git 可读写
-        backup_file_mode = int(settings.backup_file_mode, 8)
+        backup_file_mode = int(settings.mirror_file_mode, 8)
         dest.chmod(backup_file_mode)
 
         _log.ok(f"→ {src} (权限:{mode} 用户:{stat.st_uid}:{stat.st_gid})")
@@ -281,34 +281,34 @@ def backup_module(module: ModuleConfig, backup_root: Path, settings: Settings,
     if dry_run:
         _log.info(f"[DRY-RUN] 预览模块 '{module_name}' 的备份内容")
 
-    if module.script is not None:
+    if module.hook is not None:
         if dry_run:
-            _log.info(f"[DRY-RUN] 将执行脚本: {module.script}")
+            _log.info(f"[DRY-RUN] 将执行脚本: {module.hook}")
         else:
             # 使用脚本备份
-            script_rel = module.script
-            script_lang = module.script_lang
+            script_rel = module.hook
+            hook_lang = module.hook_lang
 
             # 如果未指定语言，尝试自动检测
-            if script_lang == "auto":
+            if hook_lang == "auto":
                 from confmirror.utils import get_script_shebang
                 script_path = settings.script_hooks_dir / script_rel
                 detected = get_script_shebang(script_path)
-                script_lang = detected if detected else "bash"
-                _log.info(f"自动检测到脚本语言: {script_lang}")
+                hook_lang = detected if detected else "bash"
+                _log.info(f"自动检测到脚本语言: {hook_lang}")
 
-            run_script(script_rel, settings, "backup", script_lang)
+            run_script(script_rel, settings, "backup", hook_lang)
 
-    elif module.include_paths is not None:
+    elif module.paths is not None:
         # 使用路径备份
-        parent_path = module.parent_path or ""
+        parent_path = module.base_path or ""
 
         # 获取排除路径模式
         exclude_patterns = module.exclude_paths or []
 
         # 预编译排除规则，避免循环内重复构建
         spec = pathspec.GitIgnoreSpec.from_lines(exclude_patterns) if exclude_patterns else None
-        for path_str in module.include_paths:
+        for path_str in module.paths:
             # 展开可能的通配符路径，同时应用排除规则
             expanded_paths = expand_path_patterns(path_str, parent_path, exclude_patterns, spec=spec)
 

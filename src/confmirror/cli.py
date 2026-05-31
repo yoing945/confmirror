@@ -25,6 +25,7 @@ from .logger import setup_logger, resolve_log_path, ModuleLog
 from .output import ExitCode, emit_json, suppress_console_log
 from .perms import display_perms_info, execute_perms, get_perms_data
 from .restore import execute_restore
+from .system_install import install_system_entry, uninstall_system_entry
 
 logger = logging.getLogger(__name__)
 
@@ -595,6 +596,47 @@ def show():
         click.echo(path)
     else:
         click.echo("未设置全局配置路径")
+
+
+@main.command()
+@click.option('--source-path', type=click.Path(exists=True), help='confmirror 可执行文件的完整路径（通常自动检测）')
+@click.pass_context
+@_with_error_handling("install-system")
+def install_system(ctx, source_path):
+    """创建系统级入口，使 sudo confmirror 可用"""
+    log = ModuleLog("cli", logging.getLogger(APP_NAME))
+
+    try:
+        install_system_entry(Path(source_path) if source_path else None)
+        log.ok("系统级入口已创建：/usr/local/bin/confmirror")
+        log.info("现在可以直接使用：sudo confmirror restore ...")
+    except PermissionError as e:
+        click.echo(f"权限不足: {e}", err=True)
+        sys.exit(ExitCode.PERMISSION_ERROR)
+    except RuntimeError as e:
+        click.echo(f"安装失败: {e}", err=True)
+        sys.exit(ExitCode.PARTIAL_FAILURE)
+
+
+@main.command()
+@click.pass_context
+@_with_error_handling("uninstall-system")
+def uninstall_system(ctx):
+    """移除系统级入口"""
+    log = ModuleLog("cli", logging.getLogger(APP_NAME))
+
+    try:
+        removed = uninstall_system_entry()
+        if removed:
+            log.ok("系统级入口已移除：/usr/local/bin/confmirror")
+        else:
+            log.info("系统级入口不存在，无需卸载")
+    except PermissionError as e:
+        click.echo(f"权限不足: {e}", err=True)
+        sys.exit(ExitCode.PERMISSION_ERROR)
+    except RuntimeError as e:
+        click.echo(f"卸载失败: {e}", err=True)
+        sys.exit(ExitCode.PARTIAL_FAILURE)
 
 
 if __name__ == '__main__':
