@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-06-20
+
+### Fixed
+
+- 修复 `global-config-path` 指向目录时无法正确读取配置文件的问题
+- 修复 `paths` 使用 `/**` 通配符时重复备份同一文件的问题
+
 ## [1.1.0] - 2026-06-20
 
 ### Added
@@ -51,5 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 还原时正确识别备份根目录路径
 - 提权后正确解析用户目录中的全局配置文件
 
+[1.1.1]: https://github.com/yoing945/confmirror/releases/tag/v1.1.1
 [1.1.0]: https://github.com/yoing945/confmirror/releases/tag/v1.1.0
 [1.0.0]: https://github.com/yoing945/confmirror/releases/tag/v1.0.0
