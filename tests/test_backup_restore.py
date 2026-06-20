@@ -10,6 +10,7 @@ import pytest
 from confmirror.backup import (
     _backup_directory,
     _backup_file,
+    _deduplicate_paths,
     backup_module,
     backup_single_path,
 )
@@ -297,6 +298,63 @@ class TestRestoreFileOrDir:
             restore_file_or_dir(original, backup_root)
 
         assert "缺少 .meta" in caplog.text
+
+
+class TestDeduplicatePaths:
+    def test_removes_children_of_parent_dirs(self):
+        paths = [
+            Path("/a"),
+            Path("/a/b"),
+            Path("/a/b/c.txt"),
+            Path("/a/d.txt"),
+            Path("/x/y.txt"),
+        ]
+        result = _deduplicate_paths(paths)
+        assert sorted(result) == sorted([Path("/a"), Path("/x/y.txt")])
+
+    def test_keeps_only_files_when_no_parent_dir(self):
+        paths = [Path("/a/b.txt"), Path("/a/c.txt")]
+        result = _deduplicate_paths(paths)
+        assert sorted(result) == sorted(paths)
+
+    def test_handles_empty_list(self):
+        assert _deduplicate_paths([]) == []
+
+    def test_removes_exact_duplicates(self):
+        paths = [Path("/a/b.txt"), Path("/a/b.txt")]
+        result = _deduplicate_paths(paths)
+        assert result == [Path("/a/b.txt")]
+
+
+class TestBackupModuleDedup:
+    def test_glob_recursive_does_not_backup_same_file_twice(
+        self, tmp_path, monkeypatch, settings, caplog
+    ):
+        """glob ** 同时匹配目录和子文件时，每个文件只应备份一次"""
+        monkeypatch.chdir(tmp_path)
+        src = tmp_path / "traefik"
+        src.mkdir()
+        (src / "traefik.yml").write_text("entryPoints:\n")
+        certs = src / "certs"
+        certs.mkdir()
+        (certs / "local.crt").write_text("cert")
+        (certs / "local.key").write_text("key")
+
+        module = ModuleConfig(name="traefik", paths=[str(src / "**")])
+
+        with caplog.at_level("INFO", logger="confmirror.backup"):
+            backup_module(module, settings.backup_root, settings)
+
+        mirror = settings.backup_root
+        assert (mirror / str(src).lstrip("/") / "traefik.yml").exists()
+        assert (mirror / str(src).lstrip("/") / "certs" / "local.crt").exists()
+        assert (mirror / str(src).lstrip("/") / "certs" / "local.key").exists()
+
+        # 首次备份不应出现任何 "文件信息无变化" 跳过日志
+        skip_logs = [
+            line for line in caplog.text.splitlines() if "文件信息无变化" in line
+        ]
+        assert len(skip_logs) == 0
 
 
 class TestBackupModuleWithScript:

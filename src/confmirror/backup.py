@@ -73,7 +73,9 @@ def execute_backup(
             _log.skip(f"路径 '{target_path}' 被排除")
             return
         # 展开可能的通配符路径，并应用排除规则
-        expanded_paths = expand_path_patterns(target_path, "", all_exclude_patterns)
+        expanded_paths = _deduplicate_paths(
+            expand_path_patterns(target_path, "", all_exclude_patterns)
+        )
 
         if not expanded_paths:
             _log.warn(f"路径模式未匹配到任何文件: {target_path}")
@@ -272,6 +274,21 @@ def backup_single_path(
         )
 
 
+def _deduplicate_paths(paths: List[Path]) -> List[Path]:
+    """去除被其他路径覆盖的重复路径。
+
+    如果路径列表中同时存在父目录和其子路径，只保留父目录。
+    这样可以避免 glob 的 ``**`` 模式同时匹配到目录及其内容时重复备份。
+    """
+    sorted_paths = sorted(paths, key=lambda p: str(p))
+    result: List[Path] = []
+    for path in sorted_paths:
+        if any(path.is_relative_to(keep) for keep in result):
+            continue
+        result.append(path)
+    return result
+
+
 def expand_path_patterns(
     path_pattern: str,
     parent_path: str = "",
@@ -372,9 +389,9 @@ def backup_module(
             else None
         )
         for path_str in module.paths:
-            # 展开可能的通配符路径，同时应用排除规则
-            expanded_paths = expand_path_patterns(
-                path_str, parent_path, exclude_patterns, spec=spec
+            # 展开可能的通配符路径，同时应用排除规则，并去重
+            expanded_paths = _deduplicate_paths(
+                expand_path_patterns(path_str, parent_path, exclude_patterns, spec=spec)
             )
 
             if not expanded_paths:
