@@ -4,14 +4,15 @@ import logging
 from unittest.mock import MagicMock
 
 import pytest
+
 from confmirror.config import (
+    Config,
     ConfigKeys,
+    ModuleConfig,
+    Settings,
     load_config,
     validate_config_structure,
     validate_yaml_syntax,
-    Settings,
-    ModuleConfig,
-    Config,
 )
 
 
@@ -63,7 +64,9 @@ class TestLoadConfig:
 
         assert settings.name == tmp_path.name
         assert str(settings.backup_root) == str((tmp_path / "mirror").resolve())
-        assert str(settings.script_hooks_dir) == str((tmp_path / "script-hooks").resolve())
+        assert str(settings.script_hooks_dir) == str(
+            (tmp_path / "script-hooks").resolve()
+        )
         assert str(settings.log_dir) == str((tmp_path / "logs").resolve())
         assert settings.git_auto_commit is False
         assert settings.git_auto_push is False

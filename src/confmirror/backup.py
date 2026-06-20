@@ -1,28 +1,32 @@
-import logging
 import glob
+import logging
 import shutil
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import pathspec
 
 from confmirror.config import Config, ModuleConfig, Settings
 from confmirror.diff import compare_meta, same_file
+from confmirror.logger import ModuleLog
 from confmirror.meta import write_meta
 from confmirror.utils import (
     find_matching_module_with_path,
     run_script,
     should_exclude_path,
 )
-from confmirror.logger import ModuleLog
 
 logger = logging.getLogger(__name__)
 _log = ModuleLog("backup", logger)
 
 
-def execute_backup(config: Config, target_module_name: Optional[str] = None,
-                   target_path: Optional[str] = None, force: bool = False,
-                   dry_run: bool = False) -> None:
+def execute_backup(
+    config: Config,
+    target_module_name: Optional[str] = None,
+    target_path: Optional[str] = None,
+    force: bool = False,
+    dry_run: bool = False,
+) -> None:
     """
     执行备份操作
 
@@ -45,7 +49,9 @@ def execute_backup(config: Config, target_module_name: Optional[str] = None,
     if target_module_name:
         # 分模块备份
         modules = config.modules
-        found_module = next((mod for mod in modules if mod.name == target_module_name), None)
+        found_module = next(
+            (mod for mod in modules if mod.name == target_module_name), None
+        )
         if not found_module:
             _log.error(f"找不到模块: '{target_module_name}'")
             return
@@ -59,7 +65,11 @@ def execute_backup(config: Config, target_module_name: Optional[str] = None,
         # 获取排除路径模式和父路径
         all_exclude_patterns = module.exclude_paths or []
         parent_path = module.base_path or ""
-        if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
+        if should_exclude_path(
+            Path(target_path),
+            exclude_patterns=all_exclude_patterns,
+            parent_path=parent_path,
+        ):
             _log.skip(f"路径 '{target_path}' 被排除")
             return
         # 展开可能的通配符路径，并应用排除规则
@@ -70,23 +80,35 @@ def execute_backup(config: Config, target_module_name: Optional[str] = None,
             return
 
         # 预编译排除规则，避免循环内重复构建
-        spec = pathspec.GitIgnoreSpec.from_lines(all_exclude_patterns) if all_exclude_patterns else None
+        spec = (
+            pathspec.GitIgnoreSpec.from_lines(all_exclude_patterns)
+            if all_exclude_patterns
+            else None
+        )
         # 对每个匹配的路径进行备份
         for path in expanded_paths:
             # 检查路径是否在当前模块的排除列表中
             if should_exclude_path(path, spec=spec, parent_path=parent_path):
                 _log.skip(f"路径 '{path}' 被排除")
                 continue
-            backup_single_path(path, backup_root, settings, force, spec=spec, parent_path=parent_path)
+            backup_single_path(
+                path, backup_root, settings, force, spec=spec, parent_path=parent_path
+            )
     else:
         # 全量备份
         for module in config.modules:
             backup_module(module, backup_root, settings, force, dry_run=dry_run)
 
 
-def _backup_directory(src_dir: Path, dest_dir: Path, settings: Settings, force: bool = False,
-                      spec: Optional[pathspec.GitIgnoreSpec] = None, parent_path: str = "",
-                      dry_run: bool = False):
+def _backup_directory(
+    src_dir: Path,
+    dest_dir: Path,
+    settings: Settings,
+    force: bool = False,
+    spec: Optional[pathspec.GitIgnoreSpec] = None,
+    parent_path: str = "",
+    dry_run: bool = False,
+):
     """
     备份目录及其内容（递归）
 
@@ -115,7 +137,9 @@ def _backup_directory(src_dir: Path, dest_dir: Path, settings: Settings, force: 
         backup_dir_mode = int(settings.mirror_dir_mode, 8)
         dest_dir.chmod(backup_dir_mode)
 
-        _log.ok(f"→ {src_dir} (权限:{dir_mode} 用户:{src_stat.st_uid}:{src_stat.st_gid})")
+        _log.ok(
+            f"→ {src_dir} (权限:{dir_mode} 用户:{src_stat.st_uid}:{src_stat.st_gid})"
+        )
 
     # 递归处理子文件和子目录
     for child in src_dir.iterdir():
@@ -128,13 +152,27 @@ def _backup_directory(src_dir: Path, dest_dir: Path, settings: Settings, force: 
         if child.is_file():
             _backup_file(child, child_dest, settings, force, dry_run=dry_run)
         elif child.is_dir():
-            _backup_directory(child, child_dest, settings, force, spec=spec, parent_path=parent_path, dry_run=dry_run)
+            _backup_directory(
+                child,
+                child_dest,
+                settings,
+                force,
+                spec=spec,
+                parent_path=parent_path,
+                dry_run=dry_run,
+            )
         else:
             _log.skip(f"不支持的文件类型: {child}")
 
 
-def _backup_file(src: Path, dest: Path, settings: Settings, force: bool = False,
-                  use_hash: bool = False, dry_run: bool = False):
+def _backup_file(
+    src: Path,
+    dest: Path,
+    settings: Settings,
+    force: bool = False,
+    use_hash: bool = False,
+    dry_run: bool = False,
+):
     """
     备份单个文件
 
@@ -182,9 +220,15 @@ def _backup_file(src: Path, dest: Path, settings: Settings, force: bool = False,
         _log.error(f"{src}: {str(e)}")
 
 
-def backup_single_path(src: Path, mirror_root: Path, settings: Settings, force: bool = False,
-                       spec: Optional[pathspec.GitIgnoreSpec] = None, parent_path: str = "",
-                       dry_run: bool = False):
+def backup_single_path(
+    src: Path,
+    mirror_root: Path,
+    settings: Settings,
+    force: bool = False,
+    spec: Optional[pathspec.GitIgnoreSpec] = None,
+    parent_path: str = "",
+    dry_run: bool = False,
+):
     """
     备份单个路径（文件或目录）到镜像目录
 
@@ -212,12 +256,20 @@ def backup_single_path(src: Path, mirror_root: Path, settings: Settings, force: 
         return
 
     # 直接使用源路径的绝对路径作为备份路径
-    dest = mirror_root / str(src).lstrip('/')
+    dest = mirror_root / str(src).lstrip("/")
 
     if src.is_file():
         _backup_file(src, dest, settings, force, dry_run=dry_run)
     elif src.is_dir():
-        _backup_directory(src, dest, settings, force, spec=spec, parent_path=parent_path, dry_run=dry_run)
+        _backup_directory(
+            src,
+            dest,
+            settings,
+            force,
+            spec=spec,
+            parent_path=parent_path,
+            dry_run=dry_run,
+        )
 
 
 def expand_path_patterns(
@@ -256,15 +308,21 @@ def expand_path_patterns(
 
     # 应用排除模式过滤结果
     filtered_paths = [
-        path for path in matched_paths
+        path
+        for path in matched_paths
         if not should_exclude_path(path, spec=spec, parent_path=parent_path)
     ]
 
     return filtered_paths
 
 
-def backup_module(module: ModuleConfig, backup_root: Path, settings: Settings,
-                  force: bool = False, dry_run: bool = False):
+def backup_module(
+    module: ModuleConfig,
+    backup_root: Path,
+    settings: Settings,
+    force: bool = False,
+    dry_run: bool = False,
+):
     """
     备份模块配置中指定的路径或脚本
 
@@ -292,6 +350,7 @@ def backup_module(module: ModuleConfig, backup_root: Path, settings: Settings,
             # 如果未指定语言，尝试自动检测
             if hook_lang == "auto":
                 from confmirror.utils import get_script_shebang
+
                 script_path = settings.script_hooks_dir / script_rel
                 detected = get_script_shebang(script_path)
                 hook_lang = detected if detected else "bash"
@@ -307,10 +366,16 @@ def backup_module(module: ModuleConfig, backup_root: Path, settings: Settings,
         exclude_patterns = module.exclude_paths or []
 
         # 预编译排除规则，避免循环内重复构建
-        spec = pathspec.GitIgnoreSpec.from_lines(exclude_patterns) if exclude_patterns else None
+        spec = (
+            pathspec.GitIgnoreSpec.from_lines(exclude_patterns)
+            if exclude_patterns
+            else None
+        )
         for path_str in module.paths:
             # 展开可能的通配符路径，同时应用排除规则
-            expanded_paths = expand_path_patterns(path_str, parent_path, exclude_patterns, spec=spec)
+            expanded_paths = expand_path_patterns(
+                path_str, parent_path, exclude_patterns, spec=spec
+            )
 
             if not expanded_paths:
                 _log.warn(f"该路径未到任何文件: {path_str}")
@@ -319,15 +384,30 @@ def backup_module(module: ModuleConfig, backup_root: Path, settings: Settings,
             for path in expanded_paths:
                 # 检查路径是否在备份根目录内，避免递归备份
                 if path.resolve().is_relative_to(backup_root.resolve()):
-                    _log.error(f"源路径 '{path}' 是备份目录或其子目录，不能备份备份目录自身")
+                    _log.error(
+                        f"源路径 '{path}' 是备份目录或其子目录，不能备份备份目录自身"
+                    )
                     continue
 
                 # 直接处理glob结果，根据文件类型执行相应备份
                 if path.is_file():
-                    _backup_file(path, backup_root / str(path).lstrip('/'), settings, force, dry_run=dry_run)
+                    _backup_file(
+                        path,
+                        backup_root / str(path).lstrip("/"),
+                        settings,
+                        force,
+                        dry_run=dry_run,
+                    )
                 elif path.is_dir():
-                    _backup_directory(path, backup_root / str(path).lstrip('/'), settings, force,
-                                      spec=spec, parent_path=parent_path, dry_run=dry_run)
+                    _backup_directory(
+                        path,
+                        backup_root / str(path).lstrip("/"),
+                        settings,
+                        force,
+                        spec=spec,
+                        parent_path=parent_path,
+                        dry_run=dry_run,
+                    )
                 else:
                     _log.skip(f"不支持的文件类型: {path}")
     else:

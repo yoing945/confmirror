@@ -51,7 +51,12 @@ class TestShouldExcludePathWithPrecompiledSpec:
         """spec 参数存在时，exclude_patterns 应被忽略"""
         path = tmp_path / "file.txt"
         spec = pathspec.GitIgnoreSpec.from_lines(["*.txt"])
-        assert should_exclude_path(path, exclude_patterns=["*.log"], spec=spec, parent_path="") is True
+        assert (
+            should_exclude_path(
+                path, exclude_patterns=["*.log"], spec=spec, parent_path=""
+            )
+            is True
+        )
 
 
 class TestFindMatchingModuleWithPath:

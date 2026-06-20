@@ -45,8 +45,15 @@ def suppress_console_log() -> None:
     抑制所有 StreamHandler（无论输出到 stdout 还是 stderr），
     FileHandler 不受影响，日志仍然写入文件。
     """
-    for logger_name in ("", "confmirror", "confmirror.backup", "confmirror.restore",
-                        "confmirror.cli", "confmirror.diff", "confmirror.gitops"):
+    for logger_name in (
+        "",
+        "confmirror",
+        "confmirror.backup",
+        "confmirror.restore",
+        "confmirror.cli",
+        "confmirror.diff",
+        "confmirror.gitops",
+    ):
         logger = logging.getLogger(logger_name)
         for handler in logger.handlers:
             if isinstance(handler, logging.StreamHandler):

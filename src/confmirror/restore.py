@@ -1,24 +1,28 @@
-import logging
 import glob
+import logging
 import os
 import shutil
 from pathlib import Path
-from typing import Optional, Dict, Any
-
-from .config import Config, ModuleConfig, Settings
-from .meta import read_meta
-from .utils import find_matching_module_with_path, run_script, should_exclude_path
-from .logger import ModuleLog
+from typing import Any, Dict, Optional
 
 import pathspec
+
+from .config import Config, ModuleConfig, Settings
+from .logger import ModuleLog
+from .meta import read_meta
+from .utils import find_matching_module_with_path, run_script, should_exclude_path
 
 logger = logging.getLogger(__name__)
 _log = ModuleLog("restore", logger)
 
 
-def execute_restore(config: Config, target_module_name: Optional[str] = None,
-                    target_path: Optional[str] = None, force: bool = False,
-                    dry_run: bool = False) -> None:
+def execute_restore(
+    config: Config,
+    target_module_name: Optional[str] = None,
+    target_path: Optional[str] = None,
+    force: bool = False,
+    dry_run: bool = False,
+) -> None:
     """
     执行还原操作
 
@@ -31,15 +35,17 @@ def execute_restore(config: Config, target_module_name: Optional[str] = None,
     """
     if dry_run:
         _log.info("[DRY-RUN] 预览模式，不实际执行还原操作")
-    elif os.name != 'nt' and os.getuid() != 0:
+    elif os.name != "nt" and os.getuid() != 0:
         _log.warn(
             "当前未以 root 身份运行，restore 操作可能因权限不足而失败。\n"
-            "建议提权执行：sudo env \"PATH=$PATH\" confmirror restore ..."
+            '建议提权执行：sudo env "PATH=$PATH" confmirror restore ...'
         )
 
     if target_module_name:
         # 还原指定模块
-        target_module = next((m for m in config.modules if m.name == target_module_name), None)
+        target_module = next(
+            (m for m in config.modules if m.name == target_module_name), None
+        )
         if not target_module:
             _log.error(f"配置中不存在模块 '{target_module_name}'")
             return
@@ -53,8 +59,9 @@ def execute_restore(config: Config, target_module_name: Optional[str] = None,
             restore_module(module, config, force, dry_run=dry_run)
 
 
-def restore_module(module: ModuleConfig, config: Config, force: bool = False,
-                   dry_run: bool = False) -> None:
+def restore_module(
+    module: ModuleConfig, config: Config, force: bool = False, dry_run: bool = False
+) -> None:
     """
     还原单个模块
 
@@ -83,38 +90,43 @@ def restore_module(module: ModuleConfig, config: Config, force: bool = False,
 
     elif module.paths is not None:
         parent_path_str = module.base_path or ""
-        backup_parent_path = backup_root / parent_path_str.lstrip('/')
+        backup_parent_path = backup_root / parent_path_str.lstrip("/")
 
         # 获取排除路径模式
         all_exclude_patterns = module.exclude_paths or []
 
         for path_str in module.paths:
-            full_path_pattern = str(backup_parent_path / path_str.lstrip('/'))
+            full_path_pattern = str(backup_parent_path / path_str.lstrip("/"))
             matched_paths = glob.glob(full_path_pattern, recursive=True)
 
             for path_str in matched_paths:
                 # 跳过 .meta 文件本身
-                if path_str.endswith('.meta'):
+                if path_str.endswith(".meta"):
                     continue
 
                 path = Path(path_str)
 
                 # 检查是否应该排除此路径
-                if should_exclude_path(path, all_exclude_patterns, str(backup_parent_path)):
+                if should_exclude_path(
+                    path, all_exclude_patterns, str(backup_parent_path)
+                ):
                     _log.skip(f"路径 '{path}' 被排除")
                     continue
 
                 # 获取相对于备份根目录的路径，这是原始路径
                 try:
                     rel_path = path.relative_to(backup_root)
-                    original_path = Path('/') / rel_path
-                    restore_file_or_dir(original_path, backup_root, force, dry_run=dry_run)
+                    original_path = Path("/") / rel_path
+                    restore_file_or_dir(
+                        original_path, backup_root, force, dry_run=dry_run
+                    )
                 except ValueError:
                     _log.warn(f"路径不在备份根目录下 → {path}")
 
 
-def restore_single_path(target_path: str, config: Config, force: bool = False,
-                         dry_run: bool = False) -> None:
+def restore_single_path(
+    target_path: str, config: Config, force: bool = False, dry_run: bool = False
+) -> None:
     """
     还原单个路径
 
@@ -136,30 +148,36 @@ def restore_single_path(target_path: str, config: Config, force: bool = False,
     # 获取排除路径模式和父路径
     all_exclude_patterns = module.exclude_paths or []
     parent_path = module.base_path or ""
-    if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
+    if should_exclude_path(
+        Path(target_path),
+        exclude_patterns=all_exclude_patterns,
+        parent_path=parent_path,
+    ):
         _log.skip(f"路径 '{target_path}' 被排除")
         return
 
     # 将用户输入的路径转换为备份根目录下的路径
-    backup_target_path = backup_root / target_path.lstrip('/')
+    backup_target_path = backup_root / target_path.lstrip("/")
 
     # 使用 glob 查找所有匹配的文件
     matched_files = glob.glob(str(backup_target_path), recursive=True)
 
     for file_path in matched_files:
-        if file_path.endswith('.meta'):
+        if file_path.endswith(".meta"):
             continue
 
         # 获取相对于备份根目录的路径，这是原始路径
         try:
             rel_path = Path(file_path).relative_to(backup_root)
-            original_path = Path('/') / rel_path
+            original_path = Path("/") / rel_path
             restore_file_or_dir(original_path, backup_root, force, dry_run=dry_run)
         except ValueError:
             _log.warn(f"路径不在备份根目录下 → {file_path}")
 
-def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False,
-                          dry_run: bool = False):
+
+def restore_file_or_dir(
+    original: Path, backup_root: Path, force: bool = False, dry_run: bool = False
+):
     """
     还原单个文件或目录
 
@@ -185,6 +203,7 @@ def restore_file_or_dir(original: Path, backup_root: Path, force: bool = False,
     if not force and original.exists():
         # 导入差异比较函数
         from .diff import same_file
+
         if same_file(original, backup):
             _log.skip(f"文件信息无变化: {original}")
             return

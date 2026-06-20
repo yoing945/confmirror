@@ -1,12 +1,20 @@
 """Tests for diff core algorithms."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from confmirror.diff import compare_content, compare_meta, same_file, _compare_files_by_hash, diff_module, diff_paths
-from confmirror.meta import write_meta
+import pytest
+
 from confmirror.config import Config, ModuleConfig, Settings
+from confmirror.diff import (
+    _compare_files_by_hash,
+    compare_content,
+    compare_meta,
+    diff_module,
+    diff_paths,
+    same_file,
+)
+from confmirror.meta import write_meta
 
 
 class TestCompareContent:
@@ -158,8 +166,7 @@ class TestDiffModule:
     def test_module_not_found(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         config = Config(
-            settings=Settings(name="test", backup_root=tmp_path / "mirror"),
-            modules=[]
+            settings=Settings(name="test", backup_root=tmp_path / "mirror"), modules=[]
         )
         with patch("confmirror.diff.compare_files_set") as mock_cmp:
             diff_module(config, "nonexistent")
@@ -169,7 +176,7 @@ class TestDiffModule:
         monkeypatch.chdir(tmp_path)
         config = Config(
             settings=Settings(name="test", backup_root=tmp_path / "mirror"),
-            modules=[ModuleConfig(name="ufw", hook="ufw/script.sh")]
+            modules=[ModuleConfig(name="ufw", hook="ufw/script.sh")],
         )
         with patch("confmirror.diff.compare_files_set") as mock_cmp:
             diff_module(config, "ufw")
@@ -185,7 +192,9 @@ class TestDiffModule:
 
         config = Config(
             settings=Settings(name="test", backup_root=backup_root),
-            modules=[ModuleConfig(name="ssh", base_path="/etc", paths=["ssh/sshd_config"])]
+            modules=[
+                ModuleConfig(name="ssh", base_path="/etc", paths=["ssh/sshd_config"])
+            ],
         )
 
         src_pattern = str(Path("/etc") / "ssh/sshd_config")
@@ -216,16 +225,20 @@ class TestDiffModule:
         (backup_root / "etc" / "nginx" / "nginx.conf").write_text("conf")
         write_meta(backup_root / "etc" / "nginx" / "nginx.conf", "644", 0, 0, "file")
         (backup_root / "etc" / "nginx" / "nginx.conf.bak").write_text("bak")
-        write_meta(backup_root / "etc" / "nginx" / "nginx.conf.bak", "644", 0, 0, "file")
+        write_meta(
+            backup_root / "etc" / "nginx" / "nginx.conf.bak", "644", 0, 0, "file"
+        )
 
         config = Config(
             settings=Settings(name="test", backup_root=backup_root),
-            modules=[ModuleConfig(
-                name="nginx",
-                base_path="/etc/nginx",
-                paths=["*"],
-                exclude_paths=["*.bak"]
-            )]
+            modules=[
+                ModuleConfig(
+                    name="nginx",
+                    base_path="/etc/nginx",
+                    paths=["*"],
+                    exclude_paths=["*.bak"],
+                )
+            ],
         )
 
         src_pattern = str(Path("/etc/nginx") / "*")
@@ -257,7 +270,7 @@ class TestDiffPaths:
         monkeypatch.chdir(tmp_path)
         config = Config(
             settings=Settings(name="test", backup_root=tmp_path / "mirror"),
-            modules=[ModuleConfig(name="ssh", paths=["/etc/ssh/sshd_config"])]
+            modules=[ModuleConfig(name="ssh", paths=["/etc/ssh/sshd_config"])],
         )
         with patch("confmirror.diff.compare_files_set") as mock_cmp:
             diff_paths(config, ["/etc/nginx/nginx.conf"])
@@ -273,7 +286,7 @@ class TestDiffPaths:
 
         config = Config(
             settings=Settings(name="test", backup_root=backup_root),
-            modules=[ModuleConfig(name="ssh", paths=["/etc/ssh/sshd_config"])]
+            modules=[ModuleConfig(name="ssh", paths=["/etc/ssh/sshd_config"])],
         )
 
         def fake_glob(pattern, recursive=False):

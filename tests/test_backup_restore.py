@@ -1,14 +1,19 @@
 """Tests for backup and restore core logic."""
 
 import time
+from pathlib import Path
 from unittest.mock import patch
 
 import pathspec
 import pytest
-from pathlib import Path
 
-from confmirror.backup import _backup_file, _backup_directory, backup_single_path, backup_module
-from confmirror.config import Settings, ModuleConfig, Config
+from confmirror.backup import (
+    _backup_directory,
+    _backup_file,
+    backup_module,
+    backup_single_path,
+)
+from confmirror.config import Config, ModuleConfig, Settings
 from confmirror.meta import read_meta, write_meta
 from confmirror.restore import restore_file_or_dir, restore_module
 
@@ -146,7 +151,7 @@ class TestBackupSinglePath:
 
         assert any(settings.backup_root.rglob("ssh"))
         # 备份路径基于 src 的绝对路径，在 mirror_root 下重建完整路径
-        dest = settings.backup_root / str(src).lstrip('/')
+        dest = settings.backup_root / str(src).lstrip("/")
         assert (dest / "sshd_config").exists()
         assert (dest / "sshd_config").read_text() == "hello\n"
         assert (dest / "ssh_config.d" / "custom.conf").exists()
@@ -179,7 +184,7 @@ class TestRestoreFileOrDir:
         backup_root = tmp_path / "mirror"
         original = tmp_path / "sshd_config"
         # backup 路径必须与 restore_file_or_dir 的构造逻辑一致
-        backup = backup_root / str(original).lstrip('/')
+        backup = backup_root / str(original).lstrip("/")
         backup.parent.mkdir(parents=True)
         backup.write_text("backup content\n")
         write_meta(backup, "644", 1000, 1000, "file")
@@ -199,7 +204,7 @@ class TestRestoreFileOrDir:
         original.write_text("same content\n")
         stat = original.stat()
 
-        backup = backup_root / str(original).lstrip('/')
+        backup = backup_root / str(original).lstrip("/")
         backup.parent.mkdir(parents=True)
         backup.write_text("same content\n")
         write_meta(backup, oct(stat.st_mode)[-3:], stat.st_uid, stat.st_gid, "file")
@@ -215,7 +220,7 @@ class TestRestoreFileOrDir:
 
         backup_root = tmp_path / "mirror"
         original = tmp_path / "ssh"
-        backup = backup_root / str(original).lstrip('/')
+        backup = backup_root / str(original).lstrip("/")
         backup.mkdir(parents=True)
         (backup / "sshd_config").write_text("config\n")
         write_meta(backup, "755", 1000, 1000, "dir")
@@ -230,13 +235,15 @@ class TestRestoreFileOrDir:
     def test_restore_directory_with_subdir_meta(self, tmp_path, monkeypatch):
         """还原目录应恢复子目录的权限和属主（.dir.meta）"""
         chown_calls = []
+
         def mock_chown(p, u, g):
             chown_calls.append((str(p), u, g))
+
         monkeypatch.setattr("os.chown", mock_chown)
 
         backup_root = tmp_path / "mirror"
         original = tmp_path / "nginx"
-        backup = backup_root / str(original).lstrip('/')
+        backup = backup_root / str(original).lstrip("/")
         backup.mkdir(parents=True)
 
         # 创建子目录及其 .dir.meta
@@ -258,14 +265,16 @@ class TestRestoreFileOrDir:
         assert (original / "sites-available").exists()
         # os.chmod 被调用，检查调用记录中是否包含子目录
         subdir_chown = [c for c in chown_calls if c[0].endswith("sites-available")]
-        assert subdir_chown, f"子目录 sites-available 的权限/属主未被还原，chown 调用: {chown_calls}"
+        assert (
+            subdir_chown
+        ), f"子目录 sites-available 的权限/属主未被还原，chown 调用: {chown_calls}"
 
     def test_restore_missing_backup(self, tmp_path, caplog):
         """备份内容不存在时应跳过"""
         backup_root = tmp_path / "mirror"
         original = tmp_path / "sshd_config"
         # 创建空的 meta 但无备份文件
-        backup = backup_root / str(original).lstrip('/')
+        backup = backup_root / str(original).lstrip("/")
         backup.parent.mkdir(parents=True)
         write_meta(backup, "644", 1000, 1000, "file")
 

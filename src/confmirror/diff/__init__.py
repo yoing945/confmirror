@@ -3,9 +3,10 @@
 支持单文件级别的源文件与备份文件比较，提供人类可读和 JSON 结构化两种输出格式。
 """
 
+import glob as _glob_module
+
 # Backward compatibility: tests patch these module-level names
 from pathlib import Path
-import glob as _glob_module
 
 # Expose glob module so tests can patch confmirror.diff.glob.glob
 glob = _glob_module
@@ -13,27 +14,26 @@ glob = _glob_module
 import click
 
 from confmirror.config import Config, ModuleConfig
+from confmirror.diff.core import (
+    DiffResult,
+    FileDiffResult,
+    _compare_files_by_hash,
+    compare_content,
+    compare_files_core,
+    compare_meta,
+    diff_module_core,
+    diff_paths_core,
+    same_file,
+)
+from confmirror.diff.display import display_diff_result
 from confmirror.meta import read_meta
 from confmirror.output import emit_json
 from confmirror.utils import find_matching_module_with_path, should_exclude_path
 
-from confmirror.diff.core import (
-    same_file,
-    compare_content,
-    compare_meta,
-    _compare_files_by_hash,
-    compare_files_core,
-    diff_module_core,
-    diff_paths_core,
-    FileDiffResult,
-    DiffResult,
-)
-from confmirror.diff.display import display_diff_result
-
-
 # ---------------------------------------------------------------------------
 # Backward compatibility wrapper (old tests patch this)
 # ---------------------------------------------------------------------------
+
 
 def compare_files_set(source_files_set, backup_files_set, backup_root, detail=False):
     """对比两组文件集合（人类可读输出）。
@@ -61,6 +61,7 @@ def compare_files_set(source_files_set, backup_files_set, backup_root, detail=Fa
 
         if source_file.exists() and backup_file.exists():
             from confmirror.diff.display import display_file_diff
+
             result = compare_files_core(source_file, backup_file)
             if not result.content_same or not result.meta_same:
                 diff_files += 1
@@ -75,6 +76,7 @@ def compare_files_set(source_files_set, backup_files_set, backup_root, detail=Fa
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def diff_module(config, module_name, detail=False, output_format="human"):
     """对比整个模块的所有文件。
 
@@ -86,15 +88,17 @@ def diff_module(config, module_name, detail=False, output_format="human"):
     """
     if output_format == "json":
         result = diff_module_core(config, module_name, detail)
-        emit_json({
-            "status": "success",
-            "command": "diff",
-            "module": module_name,
-            "added": result.added,
-            "deleted": result.deleted,
-            "changed": result.changed,
-            "unchanged": result.unchanged,
-        })
+        emit_json(
+            {
+                "status": "success",
+                "command": "diff",
+                "module": module_name,
+                "added": result.added,
+                "deleted": result.deleted,
+                "changed": result.changed,
+                "unchanged": result.unchanged,
+            }
+        )
         return
 
     # Human mode: backward-compatible path using compare_files_set
@@ -125,7 +129,9 @@ def diff_module(config, module_name, detail=False, output_format="human"):
             source_path = Path(source_str)
             if not source_path.exists():
                 continue
-            if should_exclude_path(source_path, exclude_patterns=exclude_patterns, parent_path=parent_path):
+            if should_exclude_path(
+                source_path, exclude_patterns=exclude_patterns, parent_path=parent_path
+            ):
                 continue
             source_files_set.add(source_path.resolve())
 
@@ -162,14 +168,16 @@ def diff_paths(config, target_paths, detail=False, output_format="human"):
     """
     if output_format == "json":
         result = diff_paths_core(config, target_paths, detail)
-        emit_json({
-            "status": "success",
-            "command": "diff",
-            "added": result.added,
-            "deleted": result.deleted,
-            "changed": result.changed,
-            "unchanged": result.unchanged,
-        })
+        emit_json(
+            {
+                "status": "success",
+                "command": "diff",
+                "added": result.added,
+                "deleted": result.deleted,
+                "changed": result.changed,
+                "unchanged": result.unchanged,
+            }
+        )
         return
 
     # Human mode: backward-compatible path
@@ -184,7 +192,11 @@ def diff_paths(config, target_paths, detail=False, output_format="human"):
             return
         all_exclude_patterns = module.exclude_paths or []
         parent_path = module.base_path or ""
-        if should_exclude_path(Path(target_path), exclude_patterns=all_exclude_patterns, parent_path=parent_path):
+        if should_exclude_path(
+            Path(target_path),
+            exclude_patterns=all_exclude_patterns,
+            parent_path=parent_path,
+        ):
             continue
 
         source_files = glob.glob(target_path, recursive=True)

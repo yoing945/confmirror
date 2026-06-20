@@ -2,14 +2,14 @@
 
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
-from pathlib import Path
 
-from confmirror.cli import main
 from confmirror import global_config
+from confmirror.cli import main
 
 
 @pytest.fixture
@@ -54,7 +54,18 @@ class TestFormatJson:
     """--format json 输出结构化数据"""
 
     def test_backup_json(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh", "--format", "json"])
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "backup",
+                "-m",
+                "ssh",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["status"] == "success"
@@ -62,7 +73,18 @@ class TestFormatJson:
         assert data["module"] == "ssh"
 
     def test_diff_json_no_backup(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "diff", "-m", "ssh", "--format", "json"])
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "diff",
+                "-m",
+                "ssh",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["status"] == "success"
@@ -71,23 +93,51 @@ class TestFormatJson:
         assert "deleted" in data
 
     def test_diff_json_with_backup(self, runner, project):
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "diff", "-m", "ssh", "--format", "json"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "diff",
+                "-m",
+                "ssh",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["status"] == "success"
         assert "changed" in data
 
     def test_ls_json(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "ls", "--format", "json"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "ls", "--format", "json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["status"] == "success"
         assert data["command"] == "ls"
 
     def test_perms_json(self, runner, project):
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "perms", "-m", "ssh", "--format", "json"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "perms",
+                "-m",
+                "ssh",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["status"] == "success"
@@ -97,10 +147,24 @@ class TestFormatJson:
         mirror = project / "mirror"
         mirror.mkdir(exist_ok=True)
         subprocess.run(["git", "init"], cwd=mirror, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=mirror, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=mirror, check=True, capture_output=True)
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "sync", "--format", "json"])
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=mirror,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=mirror,
+            check=True,
+            capture_output=True,
+        )
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "sync", "--format", "json"]
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["status"] == "success"
@@ -108,7 +172,18 @@ class TestFormatJson:
 
     def test_json_no_console_emoji(self, runner, project):
         """JSON 模式下不应有 emoji 或 ANSI 颜色污染 stdout"""
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh", "--format", "json"])
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "backup",
+                "-m",
+                "ssh",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         # stdout 应该是纯 JSON，不包含 emoji
         assert "❌" not in result.output
@@ -120,23 +195,57 @@ class TestDryRun:
     """--dry-run 预览模式不实际执行"""
 
     def test_backup_dry_run_no_files_created(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh", "--dry-run"])
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "backup",
+                "-m",
+                "ssh",
+                "--dry-run",
+            ],
+        )
         assert result.exit_code == 0
         mirror = project / "mirror"
         # 预览模式下不应创建备份文件
         assert not any(mirror.rglob("sshd_config"))
 
     def test_backup_dry_run_json(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh", "--dry-run", "--format", "json"])
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "backup",
+                "-m",
+                "ssh",
+                "--dry-run",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["dry_run"] is True
 
     def test_restore_dry_run_no_changes(self, runner, project):
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
         original = project / "etc" / "ssh" / "sshd_config"
         original.write_text("CHANGED\n")
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "restore", "-m", "ssh", "--dry-run"])
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "restore",
+                "-m",
+                "ssh",
+                "--dry-run",
+            ],
+        )
         assert result.exit_code == 0
         # 预览模式下不应还原文件
         assert original.read_text() == "CHANGED\n"
@@ -145,10 +254,32 @@ class TestDryRun:
         mirror = project / "mirror"
         mirror.mkdir(exist_ok=True)
         subprocess.run(["git", "init"], cwd=mirror, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=mirror, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=mirror, check=True, capture_output=True)
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "sync", "--dry-run", "--format", "json"])
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=mirror,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=mirror,
+            check=True,
+            capture_output=True,
+        )
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main,
+            [
+                "-c",
+                str(project / "confmirror.yaml"),
+                "sync",
+                "--dry-run",
+                "--format",
+                "json",
+            ],
+        )
         assert result.exit_code == 0
         data = json.loads(result.output)
         assert data["dry_run"] is True
@@ -159,7 +290,9 @@ class TestNonInteractive:
 
     def test_backup_full_yes(self, runner, project):
         """全量备份时 --yes 跳过 y/n 提示"""
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "--yes"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "--yes"]
+        )
         assert result.exit_code == 0
         mirror = project / "mirror"
         assert any(mirror.rglob("sshd_config"))
@@ -167,7 +300,9 @@ class TestNonInteractive:
     def test_restore_full_yes(self, runner, project):
         """全量还原时 --yes 跳过 YES 提示"""
         runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "--yes"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "restore", "--yes"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "restore", "--yes"]
+        )
         assert result.exit_code == 0
 
 
@@ -181,5 +316,7 @@ class TestExitCode:
         assert result.exit_code == 2  # click.BadParameter / UsageError
 
     def test_success_exit_code(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
         assert result.exit_code == 0

@@ -11,18 +11,19 @@ ConfMirror - 系统配置文件备份与还原工具
 
 try:
     from importlib.metadata import version
+
     __version__ = version("confmirror")
 except ImportError:
     __version__ = "1.0.0"
 
 _LAZY_IMPORTS = {
-    'load_config': ('.config', 'load_config'),
-    'Config': ('.config', 'Config'),
-    'Settings': ('.config', 'Settings'),
-    'ModuleConfig': ('.config', 'ModuleConfig'),
-    'execute_backup': ('.backup', 'execute_backup'),
-    'execute_restore': ('.restore', 'execute_restore'),
-    'setup_logger': ('.logger', 'setup_logger'),
+    "load_config": (".config", "load_config"),
+    "Config": (".config", "Config"),
+    "Settings": (".config", "Settings"),
+    "ModuleConfig": (".config", "ModuleConfig"),
+    "execute_backup": (".backup", "execute_backup"),
+    "execute_restore": (".restore", "execute_restore"),
+    "setup_logger": (".logger", "setup_logger"),
 }
 
 __all__ = list(_LAZY_IMPORTS.keys())
@@ -32,6 +33,7 @@ def __getattr__(name):
     """延迟导入，减少 import confmirror 时的启动开销"""
     if name in _LAZY_IMPORTS:
         import importlib
+
         module_path, attr_name = _LAZY_IMPORTS[name]
         module = importlib.import_module(module_path, package=__package__)
         return getattr(module, attr_name)

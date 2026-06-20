@@ -828,7 +828,6 @@ def init(ctx, path):
     exit_code = execute_init(target, dry_run=dry_run, output_format=output_format)
     if exit_code != ExitCode.SUCCESS:
         sys.exit(exit_code)
-    return exit_code
 
 
 if __name__ == "__main__":

@@ -23,8 +23,9 @@ def _module_to_dict(module: ModuleConfig) -> Dict[str, Any]:
     }
 
 
-def get_modules_data(config: Config, module_name: Optional[str] = None,
-                     detail: bool = False) -> Optional[List[Dict[str, Any]]]:
+def get_modules_data(
+    config: Config, module_name: Optional[str] = None, detail: bool = False
+) -> Optional[List[Dict[str, Any]]]:
     """
     获取模块列表结构化数据（查询与展示分离后的核心接口）。
 
@@ -71,22 +72,23 @@ def _print_module_detail(entry: Dict[str, Any]) -> None:
     """打印单个模块详细信息"""
     _log.info(f"模块: {entry['name']}")
 
-    if entry['type'] == 'script':
+    if entry["type"] == "script":
         _log.info(f"  类型: 脚本模块")
         _log.info(f"  脚本路径: {entry['hook']}")
     else:
-        if entry.get('base_path') is not None:
+        if entry.get("base_path") is not None:
             _log.info(f"  父目录: {entry['base_path']}")
-        if entry.get('paths') is not None:
+        if entry.get("paths") is not None:
             _log.info(f"  包含路径: {entry['paths']}")
-        if entry.get('exclude_paths') is not None:
+        if entry.get("exclude_paths") is not None:
             _log.info(f"  排除路径: {entry['exclude_paths']}")
 
     _log.info("-" * 50)
 
 
-def execute_list(config: Config, module_name: Optional[str] = None,
-                 detail: bool = False) -> Optional[List[Dict[str, Any]]]:
+def execute_list(
+    config: Config, module_name: Optional[str] = None, detail: bool = False
+) -> Optional[List[Dict[str, Any]]]:
     """
     列出所有可用模块（兼容接口：获取数据并直接显示）。
 

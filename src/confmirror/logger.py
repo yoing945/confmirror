@@ -7,7 +7,7 @@ from typing import Optional
 
 APP_NAME = "confmirror"
 DEFAULT_LOG_MAX_LINES = 1000
-SKIPPED_COLOR = '\033[90m'  # 灰色
+SKIPPED_COLOR = "\033[90m"  # 灰色
 
 
 class ModuleLog:
@@ -25,7 +25,9 @@ class ModuleLog:
         if logger.level == logging.NOTSET:
             logger.setLevel(logging.DEBUG)
 
-    def _fmt(self, msg: str, category: Optional[str] = None, status: Optional[str] = None) -> str:
+    def _fmt(
+        self, msg: str, category: Optional[str] = None, status: Optional[str] = None
+    ) -> str:
         cat = category or self._default
         if status:
             return f"[{cat}:{status}] {msg}"
@@ -51,19 +53,19 @@ class ColoredFormatter(logging.Formatter):
     """自定义颜色格式化器"""
 
     COLORS = {
-        'DEBUG': '\033[36m',    # 青色
-        'INFO': '\033[32m',     # 绿色
-        'WARNING': '\033[33m',  # 黄色
-        'ERROR': '\033[31m',    # 红色
-        'CRITICAL': '\033[35m', # 紫色
-        'RESET': '\033[0m'      # 重置
+        "DEBUG": "\033[36m",  # 青色
+        "INFO": "\033[32m",  # 绿色
+        "WARNING": "\033[33m",  # 黄色
+        "ERROR": "\033[31m",  # 红色
+        "CRITICAL": "\033[35m",  # 紫色
+        "RESET": "\033[0m",  # 重置
     }
 
     def format(self, record):
         original_levelname = record.levelname
         original_msg = record.msg
 
-        level_color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+        level_color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
         record.levelname = f"{level_color}{record.levelname}{self.COLORS['RESET']}"
 
         # 检测 skip 消息（统一格式 :skip]）
@@ -82,10 +84,10 @@ def rotate_log_file(log_file: Path, max_lines: int):
     if not log_file.exists():
         return
 
-    with open(log_file, 'r', encoding='utf-8') as f:
+    with open(log_file, "r", encoding="utf-8") as f:
         kept = deque(f, maxlen=max_lines)
 
-    with open(log_file, 'w', encoding='utf-8') as f:
+    with open(log_file, "w", encoding="utf-8") as f:
         f.writelines(kept)
 
 
@@ -110,7 +112,9 @@ def resolve_log_path(log_dir: str | Path, config_name: str = "") -> Path:
         return log_path / f"{config_name}.log" if config_name else log_path / "log.log"
 
 
-def setup_logger(log_file: Path, max_lines: int = DEFAULT_LOG_MAX_LINES) -> logging.Logger:
+def setup_logger(
+    log_file: Path, max_lines: int = DEFAULT_LOG_MAX_LINES
+) -> logging.Logger:
     """配置并返回应用日志记录器
 
     首次调用会轮转日志并配置 handler；重复调用直接返回已配置的 logger，
@@ -128,7 +132,7 @@ def setup_logger(log_file: Path, max_lines: int = DEFAULT_LOG_MAX_LINES) -> logg
     file_handler = logging.FileHandler(log_file, encoding="utf-8")
     file_formatter = logging.Formatter(
         fmt="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
+        datefmt="%Y-%m-%d %H:%M:%S",
     )
     file_handler.setFormatter(file_formatter)
     logger.addHandler(file_handler)

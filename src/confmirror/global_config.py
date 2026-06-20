@@ -9,13 +9,14 @@ import yaml
 
 # 全局配置文件路径，遵循 XDG Base Directory 规范
 # 检测是否有 SUDO_USER 环境变量，如果有则表示使用了 sudo 提权，应使用原始用户的主目录
-sudo_user = os.environ.get('SUDO_USER')
+sudo_user = os.environ.get("SUDO_USER")
 if sudo_user:
-    original_user_home = Path(os.path.expanduser('~' + sudo_user))
+    original_user_home = Path(os.path.expanduser("~" + sudo_user))
 else:
     original_user_home = Path.home()
 CONFIG_DIR = original_user_home / ".config" / "confmirror"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
+
 
 # 全局配置键
 class GlobalConfigKeys:
@@ -34,7 +35,7 @@ def load_global_config() -> Dict[str, Any]:
         return {}
 
     try:
-        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
         return config
     except Exception as e:
@@ -45,9 +46,9 @@ def load_global_config() -> Dict[str, Any]:
 def save_global_config(config: Dict[str, Any]) -> bool:
     """保存全局配置"""
     ensure_config_dir()
-    tmp_file = CONFIG_FILE.with_suffix('.tmp')
+    tmp_file = CONFIG_FILE.with_suffix(".tmp")
     try:
-        with open(tmp_file, 'w', encoding='utf-8') as f:
+        with open(tmp_file, "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
         os.replace(tmp_file, CONFIG_FILE)
         return True

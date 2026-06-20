@@ -68,14 +68,16 @@ def get_src_path_from_backup_full_path(config: Config, full_path_str: str) -> Pa
     # 将绝对路径转换为相对备份路径
     # 将path转换为相对于备份根目录的路径
     try:
-        src_path = Path('/') / Path(full_path_str).relative_to(backup_root)
+        src_path = Path("/") / Path(full_path_str).relative_to(backup_root)
     except ValueError:
         # 如果path不在backup_root下，则使用原始路径
         src_path = Path(full_path_str)
     return src_path
 
 
-def find_matching_module_with_path(modules: List[ModuleConfig], path: Path) -> Optional[ModuleConfig]:
+def find_matching_module_with_path(
+    modules: List[ModuleConfig], path: Path
+) -> Optional[ModuleConfig]:
     """
     查找包含指定路径的模块。
 
@@ -92,10 +94,12 @@ def find_matching_module_with_path(modules: List[ModuleConfig], path: Path) -> O
         if module.paths is not None:
             parent_path = module.base_path or ""
             for path_str in module.paths:
-                full_pattern = str(Path(parent_path) / path_str) if parent_path else path_str
+                full_pattern = (
+                    str(Path(parent_path) / path_str) if parent_path else path_str
+                )
 
                 # 如果包含 glob 通配符，用 fnmatch 匹配
-                if '*' in full_pattern or '?' in full_pattern or '[' in full_pattern:
+                if "*" in full_pattern or "?" in full_pattern or "[" in full_pattern:
                     if fnmatch.fnmatch(str(path), full_pattern):
                         return module
                 else:
@@ -120,7 +124,13 @@ def run_shell_script(script_rel: str, settings: Settings, action: str) -> bool:
     return run_script(script_rel, settings, action, script_lang="bash")
 
 
-def run_script(script_rel: str, settings: Settings, action: str, script_lang: str = "bash", timeout: int = 300) -> bool:
+def run_script(
+    script_rel: str,
+    settings: Settings,
+    action: str,
+    script_lang: str = "bash",
+    timeout: int = 300,
+) -> bool:
     """
     执行脚本，支持多种脚本语言
 
@@ -217,16 +227,16 @@ def get_script_shebang(script_path: Path) -> Optional[str]:
         str: 检测到的语言或None
     """
     try:
-        with open(script_path, 'r', encoding='utf-8', errors='ignore') as f:
+        with open(script_path, "r", encoding="utf-8", errors="ignore") as f:
             first_line = f.readline().strip()
-            if not first_line.startswith('#!'):
+            if not first_line.startswith("#!"):
                 return None
 
             shebang = first_line[2:].strip()
             parts = shebang.split()
 
             # 处理 /usr/bin/env python3 格式
-            if len(parts) >= 2 and parts[0].endswith('/env'):
+            if len(parts) >= 2 and parts[0].endswith("/env"):
                 interpreter = parts[-1]
             else:
                 interpreter = parts[0]
@@ -234,16 +244,16 @@ def get_script_shebang(script_path: Path) -> Optional[str]:
             name = os.path.basename(interpreter)
 
             interpreter_map = {
-                'python3': 'python3',
-                'python': 'python',
-                'python2': 'python2',
-                'bash': 'bash',
-                'sh': 'sh',
-                'ruby': 'ruby',
-                'node': 'node',
-                'nodejs': 'node',
-                'perl': 'perl',
-                'php': 'php',
+                "python3": "python3",
+                "python": "python",
+                "python2": "python2",
+                "bash": "bash",
+                "sh": "sh",
+                "ruby": "ruby",
+                "node": "node",
+                "nodejs": "node",
+                "perl": "perl",
+                "php": "php",
             }
             return interpreter_map.get(name, interpreter)
     except (OSError, UnicodeDecodeError):

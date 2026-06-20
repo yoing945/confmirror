@@ -1,11 +1,12 @@
 """差异对比终端展示层 — 人类可读输出。"""
+
 from datetime import datetime
 from pathlib import Path
 from typing import List
 
 import click
 
-from confmirror.diff.core import FileDiffResult, DiffResult
+from confmirror.diff.core import DiffResult, FileDiffResult
 
 
 def _get_diff_prefix(is_same: bool) -> str:
@@ -18,11 +19,11 @@ def show_file_diff_lines(diff_lines: List[str]) -> None:
     click.echo(f"\n   📝 内容差异 (Unified Diff):")
     for line in diff_lines:
         line = line.rstrip()
-        if line.startswith('+'):
+        if line.startswith("+"):
             click.echo(f"   \033[32m{line}\033[0m")
-        elif line.startswith('-'):
+        elif line.startswith("-"):
             click.echo(f"   \033[31m{line}\033[0m")
-        elif line.startswith('@@'):
+        elif line.startswith("@@"):
             click.echo(f"   \033[36m{line}\033[0m")
         else:
             click.echo(f"   {line}")
@@ -43,15 +44,23 @@ def display_file_diff(result: FileDiffResult, show_content_diff: bool = True) ->
 
     if is_dir:
         diff_meta_prefix = _get_diff_prefix(result.meta_same)
-        click.echo(f"  - {diff_meta_prefix}源目录权限: {result.source_mode} (uid:{result.source_uid}, gid:{result.source_gid})")
-        click.echo(f"  - {diff_meta_prefix}备份目录权限: {result.backup_mode} (uid:{result.backup_uid}, gid:{result.backup_gid})")
+        click.echo(
+            f"  - {diff_meta_prefix}源目录权限: {result.source_mode} (uid:{result.source_uid}, gid:{result.source_gid})"
+        )
+        click.echo(
+            f"  - {diff_meta_prefix}备份目录权限: {result.backup_mode} (uid:{result.backup_uid}, gid:{result.backup_gid})"
+        )
         if result.meta_same:
             click.echo(f"  ✅ 状态一致")
         else:
             click.echo(f"  ⚠️  状态存在差异")
     else:
-        click.echo(f"  - 源文件权限: {result.source_mode} (uid:{result.source_uid}, gid:{result.source_gid})")
-        click.echo(f"  - 备份文件权限: {result.backup_mode} (uid:{result.backup_uid}, gid:{result.backup_gid})")
+        click.echo(
+            f"  - 源文件权限: {result.source_mode} (uid:{result.source_uid}, gid:{result.source_gid})"
+        )
+        click.echo(
+            f"  - 备份文件权限: {result.backup_mode} (uid:{result.backup_uid}, gid:{result.backup_gid})"
+        )
         files_identical = result.content_same and result.meta_same
         if files_identical:
             click.echo(f"  ✅ 状态一致")
@@ -68,7 +77,9 @@ def print_line(count: int = 100) -> None:
     click.echo(f"{'-' * count}")
 
 
-def display_diff_result(result: DiffResult, backup_root: Path, detail: bool = False) -> None:
+def display_diff_result(
+    result: DiffResult, backup_root: Path, detail: bool = False
+) -> None:
     """显示模块/路径的差异结果（人类可读）。"""
     if result.module_name:
         click.echo(f"开始对比模块: {result.module_name}")

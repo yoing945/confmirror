@@ -1,14 +1,14 @@
 """CLI smoke tests — 验证所有命令至少不因参数/接口错误崩溃"""
 
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
-from pathlib import Path
 
-from confmirror.cli import main
 from confmirror import global_config
+from confmirror.cli import main
 
 
 @pytest.fixture
@@ -63,46 +63,67 @@ class TestCliLs:
         assert "ssh" in result.output
 
     def test_ls_single_module(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "ls", "-m", "ssh"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "ls", "-m", "ssh"]
+        )
         assert result.exit_code == 0  # 不崩溃即通过
 
     def test_ls_detail(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "ls", "-m", "ssh", "--detail"])
+        result = runner.invoke(
+            main,
+            ["-c", str(project / "confmirror.yaml"), "ls", "-m", "ssh", "--detail"],
+        )
         assert result.exit_code == 0
 
 
 class TestCliDiff:
     def test_diff_module_no_backup(self, runner, project):
         """无备份时 diff 模块应报告缺失，但不崩溃"""
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "diff", "-m", "ssh"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "diff", "-m", "ssh"]
+        )
         assert result.exit_code == 0
 
     def test_diff_path_no_backup(self, runner, project):
         ssh_config = project / "etc" / "ssh" / "sshd_config"
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "diff", str(ssh_config)])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "diff", str(ssh_config)]
+        )
         assert result.exit_code == 0
 
     def test_diff_module_with_backup(self, runner, project):
         """备份后 diff 应能正确比较"""
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "diff", "-m", "ssh"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "diff", "-m", "ssh"]
+        )
         assert result.exit_code == 0
 
 
 class TestCliPerms:
     def test_perms_module_no_backup(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "perms", "-m", "ssh"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "perms", "-m", "ssh"]
+        )
         assert result.exit_code == 0
 
     def test_perms_module_with_backup(self, runner, project):
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "perms", "-m", "ssh"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "perms", "-m", "ssh"]
+        )
         assert result.exit_code == 0
 
 
 class TestCliBackup:
     def test_backup_module(self, runner, project):
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
         assert result.exit_code == 0
         # 验证备份目录下有文件产生（不验证具体路径结构）
         mirror = project / "mirror"
@@ -110,27 +131,42 @@ class TestCliBackup:
 
     def test_backup_path(self, runner, project):
         ssh_config = project / "etc" / "ssh" / "sshd_config"
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", str(ssh_config)])
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", str(ssh_config)]
+        )
         assert result.exit_code == 0
         mirror = project / "mirror"
         assert any(mirror.rglob("sshd_config"))
 
     def test_backup_force(self, runner, project):
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh", "--force"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main,
+            ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh", "--force"],
+        )
         assert result.exit_code == 0
 
 
 class TestCliRestore:
     def test_restore_module(self, runner, project):
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "restore", "-m", "ssh"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "restore", "-m", "ssh"]
+        )
         assert result.exit_code == 0
 
     def test_restore_path(self, runner, project):
         ssh_config = project / "etc" / "ssh" / "sshd_config"
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", str(ssh_config)])
-        result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "restore", str(ssh_config)])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", str(ssh_config)]
+        )
+        result = runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "restore", str(ssh_config)]
+        )
         assert result.exit_code == 0
 
 
@@ -150,10 +186,22 @@ class TestCliSync:
         mirror = project / "mirror"
         mirror.mkdir(exist_ok=True)
         subprocess.run(["git", "init"], cwd=mirror, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=mirror, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=mirror, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@test.com"],
+            cwd=mirror,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=mirror,
+            check=True,
+            capture_output=True,
+        )
 
-        runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"])
+        runner.invoke(
+            main, ["-c", str(project / "confmirror.yaml"), "backup", "-m", "ssh"]
+        )
 
         result = runner.invoke(main, ["-c", str(project / "confmirror.yaml"), "sync"])
         assert result.exit_code == 0
@@ -167,9 +215,11 @@ class TestCliGlobalConfigPath:
 
         # 使用隔离的全局配置文件，避免污染用户真实配置
         isolated_config = tmp_path / "global_config.yaml"
-        with patch.object(global_config, 'CONFIG_FILE', isolated_config):
+        with patch.object(global_config, "CONFIG_FILE", isolated_config):
             # set
-            result = runner.invoke(main, ["global-config-path", "set", str(config_path)])
+            result = runner.invoke(
+                main, ["global-config-path", "set", str(config_path)]
+            )
             assert result.exit_code == 0
 
             # show

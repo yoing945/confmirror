@@ -1,5 +1,5 @@
-import logging
 import dataclasses
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -20,6 +20,7 @@ APP_NAME = "confmirror"
 
 class ConfigKeys:
     """配置键常量类（用于 YAML 解析层）"""
+
     # 配置节
     SECTION_SETTINGS = "settings"
     SECTION_MODULES = "modules"
@@ -47,6 +48,7 @@ class ConfigKeys:
 @dataclass
 class Settings:
     """全局配置"""
+
     name: str
     backup_root: Path
     script_hooks_dir: Path = field(default_factory=lambda: Path("./script-hooks"))
@@ -61,6 +63,7 @@ class Settings:
 @dataclass
 class ModuleConfig:
     """模块配置"""
+
     name: str
     paths: Optional[List[str]] = None
     exclude_paths: Optional[List[str]] = None
@@ -72,6 +75,7 @@ class ModuleConfig:
 @dataclass
 class Config:
     """根配置"""
+
     settings: Settings
     modules: List[ModuleConfig]
 
@@ -131,12 +135,16 @@ def validate_config_structure(config: dict) -> bool:
                     return False
 
                 if ConfigKeys.MOD_NAME not in module:
-                    _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}] 缺少必需字段 '{ConfigKeys.MOD_NAME}'")
+                    _log.error(
+                        f"{ConfigKeys.SECTION_MODULES}[{i}] 缺少必需字段 '{ConfigKeys.MOD_NAME}'"
+                    )
                     return False
 
                 module_name = module[ConfigKeys.MOD_NAME]
                 if not isinstance(module_name, str):
-                    _log.error(f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 必须是字符串")
+                    _log.error(
+                        f"{ConfigKeys.SECTION_MODULES}[{i}].{ConfigKeys.MOD_NAME} 必须是字符串"
+                    )
                     return False
 
     return True
@@ -236,7 +244,11 @@ def _normalize_paths(config: dict, config_path: Path) -> bool:
     """
     base = config_path.parent
     settings = config[ConfigKeys.SECTION_SETTINGS]
-    for key in (ConfigKeys.BACKUP_ROOT, ConfigKeys.SCRIPT_HOOKS_DIR, ConfigKeys.LOG_DIR):
+    for key in (
+        ConfigKeys.BACKUP_ROOT,
+        ConfigKeys.SCRIPT_HOOKS_DIR,
+        ConfigKeys.LOG_DIR,
+    ):
         try:
             settings[key] = (base / settings[key]).resolve()
         except (OSError, RuntimeError) as e:

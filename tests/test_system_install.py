@@ -47,9 +47,7 @@ class TestInstallSystemEntry:
         fake_source = tmp_path / "confmirror"
         fake_source.write_text("fake")
 
-        monkeypatch.setattr(
-            "confmirror.system_install.SYSTEM_BIN_DIR", system_bin
-        )
+        monkeypatch.setattr("confmirror.system_install.SYSTEM_BIN_DIR", system_bin)
         monkeypatch.setattr(os, "getuid", lambda: 0)
 
         result = install_system_entry(fake_source)
@@ -84,9 +82,7 @@ class TestInstallSystemEntry:
         fake_source = tmp_path / "confmirror"
         fake_source.write_text("fake")
 
-        monkeypatch.setattr(
-            "confmirror.system_install.SYSTEM_BIN_DIR", system_bin
-        )
+        monkeypatch.setattr("confmirror.system_install.SYSTEM_BIN_DIR", system_bin)
         monkeypatch.setattr(os, "getuid", lambda: 0)
 
         with pytest.raises(RuntimeError, match="不是 ConfMirror 创建的"):
@@ -99,9 +95,7 @@ class TestInstallSystemEntry:
         fake_source = tmp_path / "confmirror"
         fake_source.write_text("fake")
 
-        monkeypatch.setattr(
-            "confmirror.system_install.SYSTEM_BIN_DIR", system_bin
-        )
+        monkeypatch.setattr("confmirror.system_install.SYSTEM_BIN_DIR", system_bin)
         monkeypatch.setattr(os, "getuid", lambda: 0)
 
         # 第一次安装
@@ -119,9 +113,7 @@ class TestUninstallSystemEntry:
         wrapper = system_bin / "confmirror"
         wrapper.write_text(f"#!/bin/sh\n{WRAPPER_MARKER}\nexec /fake\n")
 
-        monkeypatch.setattr(
-            "confmirror.system_install.SYSTEM_BIN_DIR", system_bin
-        )
+        monkeypatch.setattr("confmirror.system_install.SYSTEM_BIN_DIR", system_bin)
         monkeypatch.setattr(os, "getuid", lambda: 0)
 
         result = uninstall_system_entry()
@@ -133,9 +125,7 @@ class TestUninstallSystemEntry:
         system_bin = tmp_path / "bin"
         system_bin.mkdir()
 
-        monkeypatch.setattr(
-            "confmirror.system_install.SYSTEM_BIN_DIR", system_bin
-        )
+        monkeypatch.setattr("confmirror.system_install.SYSTEM_BIN_DIR", system_bin)
         monkeypatch.setattr(os, "getuid", lambda: 0)
 
         result = uninstall_system_entry()
@@ -154,9 +144,7 @@ class TestUninstallSystemEntry:
         other = system_bin / "confmirror"
         other.write_text("#!/bin/sh\necho other\n")
 
-        monkeypatch.setattr(
-            "confmirror.system_install.SYSTEM_BIN_DIR", system_bin
-        )
+        monkeypatch.setattr("confmirror.system_install.SYSTEM_BIN_DIR", system_bin)
         monkeypatch.setattr(os, "getuid", lambda: 0)
 
         with pytest.raises(RuntimeError, match="不是 ConfMirror 创建的"):

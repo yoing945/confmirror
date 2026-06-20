@@ -2,25 +2,25 @@
 
 import logging
 import subprocess
-
-import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from confmirror.logger import (
-    ModuleLog,
-    rotate_log_file,
-    resolve_log_path,
-    setup_logger,
-    ColoredFormatter,
-)
+import pytest
+
 from confmirror.gitops import git_auto_commit_and_push
 from confmirror.global_config import (
-    load_global_config,
-    save_global_config,
     get_global_config_value,
-    set_global_config_value,
+    load_global_config,
     remove_global_config_value,
+    save_global_config,
+    set_global_config_value,
+)
+from confmirror.logger import (
+    ColoredFormatter,
+    ModuleLog,
+    resolve_log_path,
+    rotate_log_file,
+    setup_logger,
 )
 
 
@@ -38,6 +38,7 @@ def reset_logger():
 def isolated_global_config(monkeypatch, tmp_path):
     """隔离全局配置，避免污染用户真实配置"""
     from confmirror import global_config
+
     config_dir = tmp_path / ".config" / "confmirror"
     monkeypatch.setattr(global_config, "CONFIG_DIR", config_dir)
     monkeypatch.setattr(global_config, "CONFIG_FILE", config_dir / "config.yaml")
@@ -148,18 +149,28 @@ class TestColoredFormatter:
     def test_adds_ansi_color_to_levelname(self):
         formatter = ColoredFormatter("[%(levelname)s] %(message)s")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="hello", args=(), exc_info=None
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello",
+            args=(),
+            exc_info=None,
         )
         formatted = formatter.format(record)
         assert "\033[32m" in formatted  # INFO = green
-        assert "\033[0m" in formatted   # reset
+        assert "\033[0m" in formatted  # reset
 
     def test_gray_for_skip_messages(self):
         formatter = ColoredFormatter("[%(levelname)s] %(message)s")
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="[backup:skip] unchanged", args=(), exc_info=None
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="[backup:skip] unchanged",
+            args=(),
+            exc_info=None,
         )
         formatted = formatter.format(record)
         assert "\033[90m" in formatted  # SKIPPED_COLOR = gray
@@ -174,8 +185,18 @@ class TestGitAutoCommitAndPush:
 
     def test_no_changes(self, tmp_path):
         subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
 
         success, error_msg = git_auto_commit_and_push(tmp_path, "test")
         assert success is True
@@ -183,8 +204,18 @@ class TestGitAutoCommitAndPush:
 
     def test_commit_success(self, tmp_path):
         subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
 
         (tmp_path / "file.txt").write_text("hello\n")
 
@@ -194,8 +225,18 @@ class TestGitAutoCommitAndPush:
 
     def test_push_no_remote(self, tmp_path):
         subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
 
         (tmp_path / "file.txt").write_text("hello\n")
 
@@ -208,8 +249,18 @@ class TestGitAutoCommitFailure:
     def test_commit_failure_returns_error(self, tmp_path):
         """git commit 失败时返回 (False, error_msg) 而非抛异常"""
         subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=tmp_path, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "T"], cwd=tmp_path, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "config", "user.email", "t@t.com"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "T"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
         (tmp_path / "file.txt").write_text("hello\n")
 
         original_run = subprocess.run

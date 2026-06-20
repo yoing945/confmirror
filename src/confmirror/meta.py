@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ def write_meta(path: Path, mode: str, uid: int, gid: int, ftype: str) -> bool:
         # 根据文件类型选择元数据文件后缀
         if ftype == "dir":
             # 目录使用 .dir.meta 后缀以避免与同名文件冲突
-            meta = path.with_name(path.name + '.dir.meta')
+            meta = path.with_name(path.name + ".dir.meta")
         else:
             # 文件使用 .meta" 后缀
             meta = path.with_suffix(path.suffix + ".meta")
@@ -43,7 +43,7 @@ def read_meta(path: Path):
     meta = path.with_suffix(path.suffix + ".meta")
     if not meta.exists():
         # 如果普通.meta文件不存在，尝试.dir.meta文件（目录）
-        meta = path.with_name(path.name + '.dir.meta')
+        meta = path.with_name(path.name + ".dir.meta")
         if not meta.exists():
             return None
     data = {}
@@ -71,7 +71,7 @@ def meta_path_exists(path: Path) -> bool:
         return True
 
     # 尝试目录的元数据文件
-    meta_dir = path.with_name(path.name + '.dir.meta')
+    meta_dir = path.with_name(path.name + ".dir.meta")
     if meta_dir.exists():
         return True
 
