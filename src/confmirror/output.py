@@ -53,6 +53,7 @@ def suppress_console_log() -> None:
         "confmirror.cli",
         "confmirror.diff",
         "confmirror.gitops",
+        "confmirror.init",
     ):
         logger = logging.getLogger(logger_name)
         for handler in logger.handlers:
