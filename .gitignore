@@ -205,6 +205,10 @@ credentials.*
 .gitconfig.local
 .gitignore.local
 
+# === AI 助手规划文档 ===
+# 本地设计/计划文档，不纳入版本控制
+docs/superpowers/
+
 # === 其他 ===
 # 大文件
 *.tar.gz
