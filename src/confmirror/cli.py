@@ -741,7 +741,7 @@ _log_global = ModuleLog("cli", logging.getLogger(APP_NAME))
 @global_config_path.command()
 @click.argument("path", type=click.Path(exists=True))
 def set(path):
-    """设置全局配置文件路径"""
+    """设置全局配置文件路径（可指向目录或 .yaml 文件）"""
     success = set_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH, path)
     if success:
         _log_global.ok(f"全局配置路径已设置为 {path}")

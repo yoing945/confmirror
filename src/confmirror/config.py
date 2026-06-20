@@ -150,6 +150,13 @@ def validate_config_structure(config: dict) -> bool:
     return True
 
 
+def _ensure_config_file_path(path: Path) -> Path:
+    """如果 path 是目录，则追加默认配置文件名。"""
+    if path.exists() and path.is_dir():
+        return path / CONFIG_FILENAME
+    return path
+
+
 def resolve_config_path(custom_config_path: Optional[str] = None) -> Path:
     """解析配置文件路径（不读取内容）
 
@@ -157,13 +164,15 @@ def resolve_config_path(custom_config_path: Optional[str] = None) -> Path:
     1. 传入的自定义配置路径
     2. 全局配置中设置的默认路径
     3. 当前目录下的 confmirror.yaml
+
+    如果传入的路径是目录，则自动在该目录下查找 confmirror.yaml。
     """
     if custom_config_path:
-        return Path(custom_config_path).expanduser()
+        return _ensure_config_file_path(Path(custom_config_path).expanduser())
 
     global_config_path = get_global_config_value(GlobalConfigKeys.DEFAULT_CONFIG_PATH)
     if global_config_path:
-        return Path(global_config_path).expanduser()
+        return _ensure_config_file_path(Path(global_config_path).expanduser())
 
     return Path.cwd() / CONFIG_FILENAME
 
@@ -290,7 +299,7 @@ def load_config(custom_config_path: Optional[str] = None) -> Optional[Config]:
     if not config_path.exists():
         _log.error(
             f"未找到配置文件: {config_path}。\n"
-            f"请确保配置文件存在，或使用 -c/--config 指定配置文件路径，或通过 `confmirror global_config_path set <path>` 设置全局配置路径。"
+            f"请确保配置文件存在，或使用 -c/--config 指定配置文件路径，或通过 `confmirror global-config-path set <path>` 设置全局配置路径（支持目录或 .yaml 文件）。"
         )
         return None
 

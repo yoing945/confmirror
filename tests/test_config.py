@@ -6,11 +6,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from confmirror.config import (
+    CONFIG_FILENAME,
     Config,
     ConfigKeys,
     ModuleConfig,
     Settings,
     load_config,
+    resolve_config_path,
     validate_config_structure,
     validate_yaml_syntax,
 )
@@ -51,6 +53,55 @@ class TestValidateConfigStructure:
     def test_module_missing_name(self):
         config = {ConfigKeys.SECTION_MODULES: [{}]}
         assert validate_config_structure(config) is False
+
+
+class TestResolveConfigPath:
+    def test_default_returns_cwd_config(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        path = resolve_config_path()
+
+        assert path == tmp_path / CONFIG_FILENAME
+
+    def test_custom_file_path(self, tmp_path):
+        config_file = tmp_path / "custom.yaml"
+        config_file.write_text("settings:\n  name: test\n")
+
+        path = resolve_config_path(str(config_file))
+
+        assert path == config_file
+
+    def test_custom_directory_path_appends_filename(self, tmp_path):
+        config_dir = tmp_path / "config-dir"
+        config_dir.mkdir()
+
+        path = resolve_config_path(str(config_dir))
+
+        assert path == config_dir / CONFIG_FILENAME
+
+    def test_global_file_path(self, tmp_path, monkeypatch):
+        config_file = tmp_path / "global.yaml"
+        config_file.write_text("settings:\n  name: test\n")
+        monkeypatch.setattr(
+            "confmirror.config.get_global_config_value",
+            lambda key: str(config_file),
+        )
+
+        path = resolve_config_path()
+
+        assert path == config_file
+
+    def test_global_directory_path_appends_filename(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "global-dir"
+        config_dir.mkdir()
+        monkeypatch.setattr(
+            "confmirror.config.get_global_config_value",
+            lambda key: str(config_dir),
+        )
+
+        path = resolve_config_path()
+
+        assert path == config_dir / CONFIG_FILENAME
 
 
 class TestLoadConfig:
