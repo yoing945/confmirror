@@ -1,9 +1,12 @@
 """Tests for init command."""
 
+import json
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from confmirror.cli import main
 from confmirror.config import CONFIG_FILENAME
 from confmirror.init import execute_init
 from confmirror.output import ExitCode
@@ -41,6 +44,24 @@ class TestExecuteInit:
 
         assert exit_code == ExitCode.CONFIG_ERROR
 
+    def test_execute_init_refuses_existing_script_hooks_dir(self, tmp_path):
+        target = tmp_path / "existing-project"
+        target.mkdir()
+        (target / "script-hooks").mkdir()
+
+        exit_code = execute_init(target)
+
+        assert exit_code == ExitCode.CONFIG_ERROR
+
+    def test_execute_init_refuses_existing_logs_dir(self, tmp_path):
+        target = tmp_path / "existing-project"
+        target.mkdir()
+        (target / "logs").mkdir()
+
+        exit_code = execute_init(target)
+
+        assert exit_code == ExitCode.CONFIG_ERROR
+
     def test_execute_init_dry_run_does_not_create(self, tmp_path):
         target = tmp_path / "dry-project"
 
@@ -55,11 +76,6 @@ class TestExecuteInit:
         exit_code = execute_init(target, output_format="json")
 
         assert exit_code == ExitCode.SUCCESS
-
-
-from click.testing import CliRunner
-
-from confmirror.cli import main
 
 
 @pytest.fixture
@@ -111,8 +127,6 @@ class TestCliInit:
         result = runner.invoke(main, ["init", str(target), "--format", "json"])
 
         assert result.exit_code == 0
-        import json
-
         data = json.loads(result.output)
         assert data["status"] == "success"
         assert data["command"] == "init"
@@ -125,8 +139,6 @@ class TestCliInit:
         result = runner.invoke(main, ["init", "--format", "json"])
 
         assert result.exit_code == 1
-        import json
-
         data = json.loads(result.output)
         assert data["status"] == "error"
         assert data["command"] == "init"
