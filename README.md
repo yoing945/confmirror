@@ -30,6 +30,15 @@ pip install confmirror
 
 ## 🛠️ 快速开始
 
+你也可以通过以下命令一键初始化项目结构：
+
+```bash
+confmirror init
+```
+
+该命令会在当前目录生成 `confmirror.yaml`、`mirror/`、`script-hooks/` 和 `logs/`。
+如果当前目录已存在上述文件或目录，命令会拒绝执行并提示用户。
+
 ### 1. 创建配置文件
 
 首先，在工作目录中创建 `confmirror.yaml` 配置文件：
@@ -183,6 +192,7 @@ modules:
 | `confmirror backup <path>` | 备份指定路径 |
 | `sudo confmirror restore` | 全量还原（建议 root） |
 | `sudo confmirror restore -m <module>` | 还原指定模块 |
+| `confmirror init [PATH]` | 初始化 ConfMirror 项目结构 |
 | `confmirror diff -m <module>` | 对比模块差异 |
 | `confmirror perms -m <module>` | 查看权限信息 |
 | `confmirror ls` | 列出所有模块 |
