@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-20
+
+### Added
+
+- **`confmirror init [PATH]` 命令** — 一键初始化 ConfMirror 项目结构，生成 `confmirror.yaml`、`mirror/`、`script-hooks/`、`logs/`
+- **10 个 CLI 命令**：在原有 9 个命令基础上新增 `init`
+
+### Fixed
+
+- 修复 `pyproject.toml` 中 Black 的 `include` 正则格式错误，使代码格式化工具能正确处理 Python 文件
+
 ## [1.0.0] - 2026-05-29
 
 ### Added
@@ -40,4 +51,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 还原时正确识别备份根目录路径
 - 提权后正确解析用户目录中的全局配置文件
 
+[1.1.0]: https://github.com/yoing945/confmirror/releases/tag/v1.1.0
 [1.0.0]: https://github.com/yoing945/confmirror/releases/tag/v1.0.0

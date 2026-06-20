@@ -14,7 +14,7 @@ try:
 
     __version__ = version("confmirror")
 except ImportError:
-    __version__ = "1.0.0"
+    __version__ = "1.1.0"
 
 _LAZY_IMPORTS = {
     "load_config": (".config", "load_config"),
